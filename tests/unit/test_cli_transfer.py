@@ -58,3 +58,6 @@ def test_transfer_writes_draft(tmp_path, monkeypatch):
     result = runner.invoke(cli, ["transfer", str(tmp_path)])
     assert result.exit_code == 0, result.output
     assert (tmp_path / ".plutus" / "manifest.yaml.draft").exists()
+    assert (tmp_path / ".plutus" / "instrument_TODO.md").exists()
+    # CLI surfaces the instrument_TODO.md path to the author
+    assert "instrument_TODO.md" in result.output

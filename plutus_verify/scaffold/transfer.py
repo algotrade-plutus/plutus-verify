@@ -6,7 +6,10 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from plutus_verify.extract import extract_plan
-from plutus_verify.scaffold.extract_to_v2 import to_v2_manifest_yaml
+from plutus_verify.scaffold.extract_to_v2 import (
+    instrument_todo_markdown,
+    to_v2_manifest_yaml,
+)
 
 
 class TransferError(RuntimeError):
@@ -16,6 +19,7 @@ class TransferError(RuntimeError):
 @dataclass(frozen=True)
 class TransferResult:
     draft_path: Path
+    instrument_todo_path: Path
     plan_summary: str
 
 
@@ -30,6 +34,7 @@ def scaffold_transfer(
     first_attempt_idle_seconds: float = 180.0,
     retry_idle_seconds: Optional[float] = None,
     max_retries: int = 3,
+    force: bool = False,
 ) -> TransferResult:
     readme = repo_path / "README.md"
     if not readme.exists():
@@ -41,6 +46,13 @@ def scaffold_transfer(
             "Delete it first if you want to re-transfer."
         )
 
+    instrument_todo_path = plutus_dir / "instrument_TODO.md"
+    if instrument_todo_path.exists() and not force:
+        raise TransferError(
+            f"{instrument_todo_path} already exists — refusing to overwrite. "
+            "Pass force=True (or delete the file) to replace it."
+        )
+
     plan = extract_plan(
         readme.read_text(),
         llm_client,
@@ -50,13 +62,19 @@ def scaffold_transfer(
         on_attempt=on_attempt,
     )
     draft_yaml = to_v2_manifest_yaml(plan)
+    todo_md = instrument_todo_markdown(plan)
 
     plutus_dir.mkdir(exist_ok=True)
     draft_path = plutus_dir / "manifest.yaml.draft"
     draft_path.write_text(draft_yaml)
+    instrument_todo_path.write_text(todo_md)
 
     summary = (
         f"transferred {plan.repo.name}: {len(plan.steps)} steps, "
         f"{sum(len(er.metrics) for er in plan.expected_results)} metrics"
     )
-    return TransferResult(draft_path=draft_path, plan_summary=summary)
+    return TransferResult(
+        draft_path=draft_path,
+        instrument_todo_path=instrument_todo_path,
+        plan_summary=summary,
+    )

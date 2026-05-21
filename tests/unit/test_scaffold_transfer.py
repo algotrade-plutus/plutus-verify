@@ -56,10 +56,14 @@ def test_transfer_writes_draft_manifest(tmp_path, monkeypatch):
     res = scaffold_transfer(tmp_path, llm_client=MagicMock())
 
     draft_path = tmp_path / ".plutus" / "manifest.yaml.draft"
+    todo_path = tmp_path / ".plutus" / "instrument_TODO.md"
     assert draft_path.exists()
+    assert todo_path.exists()
     assert "schema_version" in draft_path.read_text()
+    assert "Instrumentation TODO" in todo_path.read_text()
     assert isinstance(res, TransferResult)
     assert res.draft_path == draft_path
+    assert res.instrument_todo_path == todo_path
 
 
 def test_transfer_does_not_overwrite_existing_manifest(tmp_path, monkeypatch):
@@ -82,19 +86,13 @@ def test_transfer_missing_readme_raises(tmp_path):
         scaffold_transfer(tmp_path, llm_client=MagicMock())
 
 
-def test_transfer_overwrites_existing_draft(tmp_path, monkeypatch):
-    """A previous draft is replaced — that's the whole point of re-running transfer."""
-    _write_readme(tmp_path)
-    plutus = tmp_path / ".plutus"
-    plutus.mkdir()
-    (plutus / "manifest.yaml.draft").write_text("# stale draft\n")
-
+def _stub_plan(name: str = "Fresh"):
     from plutus_verify.extract.plan import EnvSetup, ExtractedPlan, NineStepEntry, Repo
 
-    plan = ExtractedPlan(
+    return ExtractedPlan(
         schema_version="1.0",
         repo=Repo(
-            name="Fresh",
+            name=name,
             primary_language="python",
             env_setup=EnvSetup(kind="requirements_txt", path="requirements.txt", python_version="3.11"),
             secrets_required=(),
@@ -109,6 +107,17 @@ def test_transfer_overwrites_existing_draft(tmp_path, monkeypatch):
         steps=(),
         expected_results=(),
     )
+
+
+def test_transfer_overwrites_existing_draft(tmp_path, monkeypatch):
+    """A previous draft (manifest only, no TODO) is replaced — re-running with no
+    pre-existing instrument_TODO.md succeeds by default."""
+    _write_readme(tmp_path)
+    plutus = tmp_path / ".plutus"
+    plutus.mkdir()
+    (plutus / "manifest.yaml.draft").write_text("# stale draft\n")
+
+    plan = _stub_plan("Fresh")
     monkeypatch.setattr(
         "plutus_verify.scaffold.transfer.extract_plan",
         lambda *a, **kw: plan,
@@ -118,3 +127,45 @@ def test_transfer_overwrites_existing_draft(tmp_path, monkeypatch):
     content = (plutus / "manifest.yaml.draft").read_text()
     assert "Fresh" in content
     assert "stale draft" not in content
+    assert (plutus / "instrument_TODO.md").exists()
+
+
+def test_transfer_refuses_to_overwrite_existing_instrument_todo(tmp_path, monkeypatch):
+    """Without ``force=True``, an existing instrument_TODO.md must not be clobbered."""
+    _write_readme(tmp_path)
+    plutus = tmp_path / ".plutus"
+    plutus.mkdir()
+    (plutus / "instrument_TODO.md").write_text("# my hand-edited TODO\n")
+
+    monkeypatch.setattr(
+        "plutus_verify.scaffold.transfer.extract_plan",
+        lambda *a, **kw: _stub_plan(),
+    )
+
+    with pytest.raises(TransferError, match="instrument_TODO.md already exists"):
+        scaffold_transfer(tmp_path, llm_client=MagicMock())
+
+    # Hand-edited content preserved
+    assert (plutus / "instrument_TODO.md").read_text() == "# my hand-edited TODO\n"
+
+
+def test_transfer_force_overwrites_both(tmp_path, monkeypatch):
+    """``force=True`` replaces both the draft and the instrument_TODO.md."""
+    _write_readme(tmp_path)
+    plutus = tmp_path / ".plutus"
+    plutus.mkdir()
+    (plutus / "manifest.yaml.draft").write_text("# stale draft\n")
+    (plutus / "instrument_TODO.md").write_text("# stale TODO\n")
+
+    plan = _stub_plan("Fresh")
+    monkeypatch.setattr(
+        "plutus_verify.scaffold.transfer.extract_plan",
+        lambda *a, **kw: plan,
+    )
+
+    scaffold_transfer(tmp_path, llm_client=MagicMock(), force=True)
+    assert "Fresh" in (plutus / "manifest.yaml.draft").read_text()
+    assert "stale draft" not in (plutus / "manifest.yaml.draft").read_text()
+    todo = (plutus / "instrument_TODO.md").read_text()
+    assert "stale TODO" not in todo
+    assert "Instrumentation TODO" in todo

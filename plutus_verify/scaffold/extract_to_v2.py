@@ -5,6 +5,7 @@ shape can't fully describe what v2 needs.
 """
 from __future__ import annotations
 
+import re
 from io import StringIO
 from typing import TextIO
 
@@ -12,6 +13,36 @@ from plutus_verify.extract.plan import ExtractedPlan, Step, StepAlternative
 
 
 _TODO_TAG = "# TODO(plutus-transfer):"
+
+_NON_WORD = re.compile(r"[^\w]+")
+
+
+def _canonical_name(name: str) -> str:
+    """Convert a v1 metric name to snake_case for v2.
+
+    Examples: "Sharpe Ratio" -> "sharpe_ratio", "HPR" -> "hpr",
+    "Maximum Drawdown (MDD)" -> "maximum_drawdown_mdd".
+
+    If the result is empty or doesn't start with a letter, prefix "m_".
+    """
+    cleaned = _NON_WORD.sub("_", name.strip()).strip("_").lower()
+    if not cleaned or not cleaned[0].isalpha():
+        cleaned = "m_" + cleaned
+    return cleaned
+
+
+def _coerce_float(value) -> tuple[float, str | None]:
+    """Coerce a v1 value (float | str) to a float for v2.
+
+    Returns ``(parsed, None)`` on success, ``(0.0, original_str)`` on failure
+    so the caller can emit a TODO comment with the unparseable original.
+    """
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value), None
+    try:
+        return float(value), None
+    except (TypeError, ValueError):
+        return 0.0, str(value)
 
 
 def to_v2_manifest_yaml(plan: ExtractedPlan) -> str:
@@ -125,21 +156,22 @@ def _write_expected(buf: TextIO, plan: ExtractedPlan) -> None:
         if er.metrics:
             buf.write("    headlines:\n")
             for m in er.metrics:
-                buf.write(f"      - name: {m.name}\n")
-                buf.write(f"        value: {m.value!r}\n")
-                buf.write("        locate:\n")
-                buf.write(f"          kind: {m.locate.kind}\n")
-                if m.locate.path:
-                    buf.write(f"          path: {_yaml_str(m.locate.path)}\n")
-                if m.locate.jsonpath:
-                    buf.write(f"          jsonpath: {_yaml_str(m.locate.jsonpath)}\n")
-                if m.locate.row:
-                    buf.write(f"          row: {_yaml_str(m.locate.row)}\n")
-                if m.locate.col is not None:
-                    buf.write(f"          col: {m.locate.col}\n")
-                if m.locate.pattern:
-                    buf.write(f"          pattern: {_yaml_str(m.locate.pattern)}\n")
-                buf.write(f"        tolerance: {{kind: {m.tolerance.kind}, value: {m.tolerance.value}}}\n")
+                canonical = _canonical_name(m.name)
+                parsed, unparseable = _coerce_float(m.value)
+                buf.write(f"      - name: {canonical}\n")
+                buf.write(f"        display_name: {_yaml_str(m.name)}\n")
+                if unparseable is not None:
+                    buf.write(
+                        f"        value: 0.0  {_TODO_TAG} could not parse "
+                        f"{_yaml_str(unparseable)} as float\n"
+                    )
+                else:
+                    buf.write(f"        value: {parsed}\n")
+                tol_kind = m.tolerance.kind if m.tolerance else "relative"
+                tol_value = m.tolerance.value if m.tolerance else 0.05
+                buf.write(
+                    f"        tolerance: {{kind: {tol_kind}, value: {tol_value}}}\n"
+                )
         else:
             buf.write("    headlines: []\n")
         if er.charts:
@@ -166,3 +198,69 @@ def _write_nine_step_coverage(buf: TextIO, plan: ExtractedPlan) -> None:
 def _yaml_str(s: str) -> str:
     # Always double-quote so embedded special chars survive
     return '"' + s.replace('"', '\\"') + '"'
+
+
+# ---------------------------------------------------------------------------
+# instrument_TODO.md generator
+# ---------------------------------------------------------------------------
+
+
+_INSTRUMENT_TODO_HEADER = """# Instrumentation TODO
+
+`plutus transfer` produced a draft `.plutus/manifest.yaml.draft` from your
+existing README, but cannot wire up the SDK calls inside your actual
+scripts — that's manual. For each step below, locate the script the manifest's
+`command:` invokes, and add the matching `pv.step(...)` block to its end.
+
+Once every step's script is instrumented, rename `manifest.yaml.draft` to
+`manifest.yaml` and run `plutus check` to verify.
+
+---
+"""
+
+
+def instrument_todo_markdown(plan: ExtractedPlan) -> str:
+    """Generate the companion .plutus/instrument_TODO.md content.
+
+    Lists each step that has expected headlines, with a copy-paste-ready
+    SDK snippet showing the ``pv.step(...)`` block the author must add to
+    their reproducibility script. Steps with no expected headlines are
+    skipped — there's nothing for the author to instrument there.
+    """
+    steps_by_id = {s.id: s for s in plan.steps}
+
+    buf = StringIO()
+    buf.write(_INSTRUMENT_TODO_HEADER)
+
+    for er in plan.expected_results:
+        if not er.metrics:
+            continue
+
+        step = steps_by_id.get(er.step_id)
+        command = step.command if step and step.command else None
+        header_suffix = f" (command: `{command}`)" if command else ""
+        buf.write(f"\n## Step `{er.step_id}`{header_suffix}\n\n")
+        buf.write("Add at the end of the script:\n\n")
+        buf.write("```python\n")
+        buf.write("import plutus_verify as pv\n\n")
+        buf.write(f'with pv.step("{er.step_id}") as r:\n')
+
+        # Compute column alignment so the snippet is readable
+        canonical_names = [_canonical_name(m.name) for m in er.metrics]
+        max_name_len = max(len(n) for n in canonical_names)
+
+        for m, canonical in zip(er.metrics, canonical_names):
+            padding = " " * (max_name_len - len(canonical))
+            # The variable name on the RHS matches the canonical metric name;
+            # author replaces with whatever local var holds the value.
+            buf.write(
+                f'    r.headline("{canonical}",{padding} {canonical},'
+                f'{padding} unit="ratio")\n'
+            )
+        buf.write(
+            "    # ... replace the RHS variables with the names you compute "
+            "in this script ...\n"
+        )
+        buf.write("```\n")
+
+    return buf.getvalue()

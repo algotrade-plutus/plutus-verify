@@ -1,5 +1,4 @@
 """Tests for the v1 → v2 reverse adapter (used by `plutus transfer`)."""
-import pytest
 import yaml
 
 from plutus_verify.extract.plan import (
@@ -16,7 +15,10 @@ from plutus_verify.extract.plan import (
     StepAlternative,
     Tolerance,
 )
-from plutus_verify.scaffold.extract_to_v2 import to_v2_manifest_yaml
+from plutus_verify.scaffold.extract_to_v2 import (
+    instrument_todo_markdown,
+    to_v2_manifest_yaml,
+)
 
 
 def _minimal_plan() -> ExtractedPlan:
@@ -79,15 +81,6 @@ def test_emitted_yaml_is_parseable():
     assert data["schema_version"] == "2.0"
 
 
-@pytest.mark.xfail(
-    reason=(
-        "Plan 6 / Task 3 removed `locate:` from the v2 schema; the reverse "
-        "adapter (extract_to_v2.py) still emits a locate block from the v1 "
-        "ExpectedMetric. Task 6 rewrites the reverse adapter to drop locate "
-        "and emit display_name instead — this test re-passes then."
-    ),
-    strict=True,
-)
 def test_emitted_yaml_passes_v2_schema_validation():
     """A perfectly-extracted plan should yield a manifest that already validates,
     so authors can run `plutus check` against the draft (after renaming)."""
@@ -185,3 +178,108 @@ def test_emitted_yaml_marks_low_confidence_nine_steps():
     text = to_v2_manifest_yaml(_minimal_plan())
     # nine_step_3_data_processing was present=False; confidence 0.4 (low) → expect a TODO
     assert "TODO(plutus-transfer)" in text
+
+
+def _plan_with_metric(name: str, value) -> ExtractedPlan:
+    base = _minimal_plan()
+    return ExtractedPlan(
+        schema_version=base.schema_version,
+        repo=base.repo,
+        nine_step_mapping=base.nine_step_mapping,
+        steps=base.steps,
+        expected_results=(
+            ExpectedResult(
+                step_id="in_sample",
+                metrics=(
+                    ExpectedMetric(
+                        name=name,
+                        value=value,
+                        locate=Locate(kind="json_file", path="out/m.json", jsonpath="$.x"),
+                        tolerance=Tolerance(kind="relative", value=0.05),
+                    ),
+                ),
+                charts=(),
+            ),
+        ),
+    )
+
+
+def test_emitted_yaml_canonicalizes_metric_name_and_emits_display_name():
+    text = to_v2_manifest_yaml(_plan_with_metric("Sharpe Ratio", 0.95))
+    data = yaml.safe_load(text)
+    headline = data["expected"][0]["headlines"][0]
+    assert headline["name"] == "sharpe_ratio"
+    assert headline["display_name"] == "Sharpe Ratio"
+    assert headline["value"] == 0.95
+
+
+def test_emitted_yaml_canonicalizes_complex_metric_name():
+    text = to_v2_manifest_yaml(_plan_with_metric("Maximum Drawdown (MDD)", 0.12))
+    data = yaml.safe_load(text)
+    headline = data["expected"][0]["headlines"][0]
+    assert headline["name"] == "maximum_drawdown_mdd"
+    assert headline["display_name"] == "Maximum Drawdown (MDD)"
+
+
+def test_emitted_yaml_unparseable_value_becomes_zero_with_todo():
+    text = to_v2_manifest_yaml(_plan_with_metric("Some Metric", "abc"))
+    # The TODO comment line must mention the original literal
+    assert "TODO(plutus-transfer)" in text
+    assert 'could not parse "abc" as float' in text
+    data = yaml.safe_load(text)
+    headline = data["expected"][0]["headlines"][0]
+    assert headline["value"] == 0.0
+
+
+def test_emitted_yaml_parses_stringified_float():
+    text = to_v2_manifest_yaml(_plan_with_metric("hpr", "0.42"))
+    data = yaml.safe_load(text)
+    headline = data["expected"][0]["headlines"][0]
+    assert headline["name"] == "hpr"
+    assert headline["value"] == 0.42
+
+
+def test_emitted_yaml_does_not_contain_locate():
+    """Plan 6 removed `locate:` from v2 — the reverse adapter must not emit it."""
+    text = to_v2_manifest_yaml(_minimal_plan())
+    assert "locate:" not in text
+
+
+def test_instrument_todo_markdown_lists_steps_with_headlines():
+    plan = _minimal_plan()  # has one step (in_sample) with one metric (sharpe_ratio)
+    md = instrument_todo_markdown(plan)
+    # The step with a headline appears
+    assert "in_sample" in md
+    assert 'pv.step("in_sample")' in md
+    assert "sharpe_ratio" in md
+    # The step without headlines (data_collection) is omitted
+    assert "data_collection" not in md
+
+
+def test_instrument_todo_markdown_uses_canonical_names():
+    plan = _plan_with_metric("Sharpe Ratio", 0.95)
+    md = instrument_todo_markdown(plan)
+    # Canonical snake_case is the literal passed to r.headline(...)
+    assert 'r.headline("sharpe_ratio"' in md
+
+
+def test_instrument_todo_markdown_includes_command_when_present():
+    plan = _minimal_plan()
+    md = instrument_todo_markdown(plan)
+    assert "python -m demo.backtest" in md
+
+
+def test_instrument_todo_markdown_empty_when_no_headlines():
+    base = _minimal_plan()
+    plan = ExtractedPlan(
+        schema_version=base.schema_version,
+        repo=base.repo,
+        nine_step_mapping=base.nine_step_mapping,
+        steps=base.steps,
+        expected_results=(),
+    )
+    md = instrument_todo_markdown(plan)
+    # Header is present but no step subsections (no concrete pv.step("...") block)
+    assert "Instrumentation TODO" in md
+    assert 'pv.step("' not in md
+    assert "## Step `" not in md

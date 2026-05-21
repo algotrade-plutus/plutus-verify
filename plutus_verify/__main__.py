@@ -466,12 +466,14 @@ def snapshot_cmd(repo_path: Path, no_run: bool) -> None:
     help="YAML config overriding LLM defaults (timeouts, num_ctx, etc.)",
 )
 @click.option("--no-prewarm", is_flag=True, help="skip the LLM prewarm step")
+@click.option("--force", is_flag=True, help="overwrite an existing instrument_TODO.md")
 def transfer_cmd(
     repo_path: Path,
     llm_endpoint: Optional[str],
     llm_model: Optional[str],
     config_path: Optional[Path],
     no_prewarm: bool,
+    force: bool,
 ) -> None:
     """Convert a legacy README-based repo into a v2 draft manifest."""
     from plutus_verify.scaffold.transfer import TransferError, scaffold_transfer
@@ -518,6 +520,7 @@ def transfer_cmd(
             ),
             retry_idle_seconds=float(cfg.llm.timeout_seconds),
             max_retries=cfg.llm.max_retries,
+            force=force,
         )
     except TransferError as exc:
         click.echo(f"error: {exc}", err=True)
@@ -525,8 +528,13 @@ def transfer_cmd(
         ctx.exit(2)
         return
     click.echo(f"\nwrote draft: {res.draft_path}")
+    click.echo(f"wrote instrument_TODO.md: {res.instrument_todo_path}")
     click.echo(res.plan_summary)
-    click.echo("Next: review the TODO markers, then `mv .plutus/manifest.yaml.draft .plutus/manifest.yaml`")
+    click.echo(
+        "Next: instrument each step's script per .plutus/instrument_TODO.md, "
+        "review the draft's TODO markers, then "
+        "`mv .plutus/manifest.yaml.draft .plutus/manifest.yaml` and run `plutus check`."
+    )
 
 
 # ---------------------------------------------------------------------------
