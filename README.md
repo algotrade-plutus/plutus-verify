@@ -166,3 +166,15 @@ nine_step_coverage: {}
 Authoring tools (`plutus init`, `plutus check`, `plutus snapshot`) land in Plan 3.
 Native v2 execution (input/output pre-flight, data-tier resolver, full
 reference-output comparator) lands in Plan 2.
+
+## Migrating a legacy repo
+
+For repos that already exist as v1 (README + LLM extraction), run:
+
+```bash
+plutus transfer /path/to/repo --llm-endpoint http://localhost:11434/v1
+```
+
+This writes `.plutus/manifest.yaml.draft`. Open it, address every
+`# TODO(plutus-transfer):` marker, rename to `manifest.yaml`, and run
+`plutus check` to verify the migration.
