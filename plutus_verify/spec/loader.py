@@ -61,7 +61,14 @@ def load_manifest_from_dict(data: dict[str, Any]) -> Manifest:
         _VALIDATOR.validate(data)
     except ValidationError as exc:
         raise ManifestLoadError(f"schema violation: {exc.message}") from exc
-    return _build(data)
+    m = _build(data)
+    from plutus_verify.spec.validator import ManifestInvariantError, check_invariants
+
+    try:
+        check_invariants(m)
+    except ManifestInvariantError as exc:
+        raise ManifestLoadError(str(exc)) from exc
+    return m
 
 
 def _build(d: dict[str, Any]) -> Manifest:
