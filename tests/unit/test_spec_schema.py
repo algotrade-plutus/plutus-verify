@@ -47,7 +47,7 @@ def test_schema_rejects_unknown_env_base():
     bad["env"]["base"] = "rust"
     v = Draft202012Validator(MANIFEST_SCHEMA)
     errs = list(v.iter_errors(bad))
-    assert errs
+    assert errs, "expected schema to reject env.base='rust' (not in enum)"
 
 
 def test_schema_allows_nine_step_null_on_step():
@@ -120,4 +120,4 @@ def test_schema_rejects_unknown_compare_kind():
     )
     v = Draft202012Validator(MANIFEST_SCHEMA)
     errs = list(v.iter_errors(d))
-    assert errs
+    assert errs, "expected schema to reject compare='fuzzy_magic' (not in enum)"

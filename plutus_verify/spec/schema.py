@@ -7,15 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-NINE_STEP_KEYS = (
-    "step_1_hypothesis",
-    "step_2_data_collection",
-    "step_3_data_processing",
-    "step_4_in_sample",
-    "step_5_optimization",
-    "step_6_out_of_sample",
-    "step_7_paper_trading",
-)
+from plutus_verify.spec.manifest import NINE_STEP_KEYS
 
 _LOCATE = {
     "type": "object",
