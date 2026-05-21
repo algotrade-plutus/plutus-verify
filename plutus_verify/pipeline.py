@@ -705,10 +705,10 @@ def _run_v2_native_path(
     """Native v2 path: build+execute+compare via run_v2_pipeline, then write a
     minimal report synthesized from V2RuntimeResult.
 
-    TODO(plan2-task6-report-synthesis): Full parity with v1 report.md/report.json
-    (per-metric tables, chart verdicts, full rubric) is deferred to Plan 4 when
-    the legacy path is retired.  This implementation emits a minimal but valid
-    report so the routing test passes and the output dir is usable.
+    TODO(plan2-task6-report-synthesis): v2 run's report.md/json currently lists
+    no per-step metrics or charts, and nine_step_coverage is always empty. Wire
+    HeadlineResult into MetricComparison and translate manifest.nine_step_coverage
+    into the report. Not a regression (v2 routing is correct) — just a fidelity gap.
     """
     # Image builder adapter: the v2 orchestrator expects
     # image_builder(dockerfile_text, repo_path) -> image_tag.
@@ -716,9 +716,10 @@ def _run_v2_native_path(
     # We bridge them here so the real docker build wiring (Plan 3) can supply a
     # proper v2-aware builder later.
     def _image_builder(dockerfile_text: str, repo_path: Any) -> str:
-        # TODO(plan2-task6-report-synthesis): In Plan 3, the builder will receive
-        # the generated Dockerfile text directly.  For now we delegate to the v1
-        # builder interface and discard the generated Dockerfile.
+        # TODO(plan2-task6-report-synthesis): v2 run's report.md/json currently lists
+        # no per-step metrics or charts, and nine_step_coverage is always empty. Wire
+        # HeadlineResult into MetricComparison and translate manifest.nine_step_coverage
+        # into the report. Not a regression (v2 routing is correct) — just a fidelity gap.
         result = _invoke_builder(
             builder,
             repo_path=ing.repo_path,
@@ -788,7 +789,6 @@ def _run_v2_native_path(
 
     # -- synthesize step reports for the overall verdict --
     step_reports: list[StepReport] = []
-    step_by_id = {s.id: s for s in manifest.steps}
     for step in manifest.steps:
         sr = v2_result.step_results.get(step.id)
         if sr is None:
@@ -806,8 +806,8 @@ def _run_v2_native_path(
             step_id=step.id,
             required=step.required,
             exec_outcome=exec_outcome,
-            metrics=[],   # TODO(plan2-task6-report-synthesis): wire headline_results -> MetricComparison
-            charts=[],    # TODO(plan2-task6-report-synthesis): wire reference_results -> ChartVerdict
+            metrics=[],   # TODO(plan2-task6-report-synthesis): v2 run's report.md/json currently lists no per-step metrics or charts, and nine_step_coverage is always empty. Wire HeadlineResult into MetricComparison and translate manifest.nine_step_coverage into the report. Not a regression (v2 routing is correct) — just a fidelity gap.
+            charts=[],    # TODO(plan2-task6-report-synthesis): v2 run's report.md/json currently lists no per-step metrics or charts, and nine_step_coverage is always empty. Wire HeadlineResult into MetricComparison and translate manifest.nine_step_coverage into the report. Not a regression (v2 routing is correct) — just a fidelity gap.
         ))
 
     overall = aggregate_overall(step_reports)
@@ -848,7 +848,7 @@ def _run_v2_native_path(
         overall=overall,
         meta=meta,
         extraction_notes=[],
-        nine_step_coverage={},  # TODO(plan2-task6-report-synthesis): populate from manifest.nine_step_coverage
+        nine_step_coverage={},  # TODO(plan2-task6-report-synthesis): v2 run's report.md/json currently lists no per-step metrics or charts, and nine_step_coverage is always empty. Wire HeadlineResult into MetricComparison and translate manifest.nine_step_coverage into the report. Not a regression (v2 routing is correct) — just a fidelity gap.
         findings=[],
         verification_trail=trail,
     )

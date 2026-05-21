@@ -210,7 +210,7 @@ def _locate_value(locate, repo_path: Path) -> Any:
         if not matches:
             raise KeyError(f"no match for jsonpath {locate.jsonpath} in {locate.path}")
         return matches[0]
-    raise NotImplementedError(f"locate kind {locate.kind} not supported in Plan 2")
+    raise NotImplementedError(f"locate kind {locate.kind} not yet implemented; only json_file is supported")
 
 
 def _within_tolerance(actual: Any, expected: Any, tol) -> tuple[bool, str]:

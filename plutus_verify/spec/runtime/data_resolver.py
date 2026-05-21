@@ -28,11 +28,6 @@ class DataTierResult:
     notes: tuple[str, ...] = ()
 
 
-@dataclass(frozen=True)
-class DataTierResolution:  # placeholder alias retained for forward-compat
-    pass
-
-
 Downloader = Callable[[DataSource, Path], bool]
 
 

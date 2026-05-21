@@ -1,8 +1,10 @@
 """Bridge: v2 Manifest → v1 ExtractedPlan.
 
-This adapter is intentionally lossy: it lets the existing build/execute/compare
-code run against v2-authored repos with no changes. Plan 2 will introduce a
-native v2 executor and retire the adapter.
+This adapter is intentionally lossy: it bridges v2 → v1 so the legacy
+build/execute/compare code can run against v2-authored repos. Plan 2 added a
+native v2 runtime so v2 repos no longer execute through the v1 path; the
+adapter is still called to produce an auditable `plan.json` for the v2 path.
+Full retirement is deferred until the legacy LLM-extract pathway is removed.
 
 Documented losses (each emits an extraction_notes entry on the returned plan):
   - env.os_packages, env.gpu_required (Plan 2 generates the Dockerfile natively)

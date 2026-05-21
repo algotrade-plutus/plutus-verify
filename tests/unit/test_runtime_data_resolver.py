@@ -6,7 +6,6 @@ import pytest
 
 from plutus_verify.spec.manifest import DataSource, DataSourceTiers, Manifest
 from plutus_verify.spec.runtime.data_resolver import (
-    DataTierResolution,
     DataTierResult,
     resolve_data_tiers,
 )
