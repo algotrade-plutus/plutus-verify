@@ -447,24 +447,81 @@ def snapshot_cmd(repo_path: Path, no_run: bool) -> None:
 @click.argument("repo_path", type=click.Path(path_type=Path, file_okay=False), default=".")
 @click.option(
     "--llm-endpoint",
-    default="http://localhost:11434/v1",
-    help="OpenAI-compatible endpoint for the LLM extractor",
-    show_default=True,
+    default=None,
+    help="OpenAI-compatible endpoint (default: config or http://localhost:11434/v1)",
 )
-@click.option("--llm-model", default="gemma4:26b", show_default=True)
-def transfer_cmd(repo_path: Path, llm_endpoint: str, llm_model: str) -> None:
+@click.option(
+    "--llm-model",
+    default=None,
+    help="model name (default: from config or gemma4:26b)",
+)
+@click.option(
+    "--config",
+    "config_path",
+    type=click.Path(path_type=Path, dir_okay=False),
+    default=None,
+    help="YAML config overriding LLM defaults (timeouts, num_ctx, etc.)",
+)
+@click.option("--no-prewarm", is_flag=True, help="skip the LLM prewarm step")
+def transfer_cmd(
+    repo_path: Path,
+    llm_endpoint: Optional[str],
+    llm_model: Optional[str],
+    config_path: Optional[Path],
+    no_prewarm: bool,
+) -> None:
     """Convert a legacy README-based repo into a v2 draft manifest."""
     from plutus_verify.scaffold.transfer import TransferError, scaffold_transfer
 
-    llm = OpenAICompatClient(endpoint=llm_endpoint, model=llm_model)
+    cfg = load_config(config_path)
+    if llm_endpoint:
+        cfg.llm.endpoint = llm_endpoint
+    if llm_model:
+        cfg.llm.model = llm_model
+
+    click.echo(f"endpoint: {cfg.llm.endpoint}")
+    click.echo(f"model: {cfg.llm.model}")
+
+    llm = OpenAICompatClient(
+        endpoint=cfg.llm.endpoint,
+        model=cfg.llm.model,
+        idle_timeout_seconds=cfg.llm.timeout_seconds,
+        num_ctx=cfg.llm.num_ctx,
+        think=cfg.llm.think,
+    )
+
+    if cfg.llm.prewarm and not no_prewarm:
+        click.echo(f"prewarming {cfg.llm.model} (first load can take 30-120s for big models)...")
+        try:
+            llm.prewarm()
+            click.echo("prewarm: ok")
+        except Exception as exc:
+            click.echo(f"prewarm failed (continuing anyway): {exc}", err=True)
+
+    def _on_attempt(label: str, raw: str, err: Optional[Exception]) -> None:
+        if err is None:
+            click.echo(f"  {label}: ok ({len(raw)} chars)")
+        else:
+            click.echo(f"  {label}: {type(err).__name__}: {err}", err=True)
+
+    click.echo("extracting v1 plan from README via 4 LLM calls...")
     try:
-        res = scaffold_transfer(Path(repo_path), llm_client=llm)
+        res = scaffold_transfer(
+            Path(repo_path),
+            llm_client=llm,
+            on_attempt=_on_attempt,
+            first_attempt_idle_seconds=float(
+                getattr(cfg.llm, "first_attempt_timeout_seconds", 180)
+            ),
+            retry_idle_seconds=float(cfg.llm.timeout_seconds),
+            max_retries=cfg.llm.max_retries,
+        )
     except TransferError as exc:
         click.echo(f"error: {exc}", err=True)
         ctx = click.get_current_context()
         ctx.exit(2)
         return
-    click.echo(f"wrote draft: {res.draft_path}")
+    click.echo(f"\nwrote draft: {res.draft_path}")
     click.echo(res.plan_summary)
     click.echo("Next: review the TODO markers, then `mv .plutus/manifest.yaml.draft .plutus/manifest.yaml`")
 
