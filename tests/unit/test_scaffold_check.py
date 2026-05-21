@@ -6,6 +6,7 @@ import pytest
 
 from plutus_verify.scaffold.check import CheckResult, scaffold_check
 from plutus_verify.scaffold.init import scaffold_init
+from plutus_verify.sdk import step as pv_step
 
 
 def test_check_returns_result_when_manifest_valid(tmp_path: Path):
@@ -44,12 +45,36 @@ def test_check_missing_manifest_raises(tmp_path: Path):
         )
 
 
-def test_check_exit_code_one_when_all_steps_pass_but_headline_pending(tmp_path: Path):
-    """All steps exit 0, but Task 4 hasn't wired the headline comparison yet —
-    every headline currently returns ok=False as a placeholder, so the check
-    surfaces a soft-fail (exit code 1). Once Task 4 reads from results.json
-    and the value matches, this returns to exit 0.
+def test_check_exit_code_zero_when_all_pass(tmp_path: Path):
+    """All required steps exit 0 and the SDK-written results.json carries the
+    expected headline value — `plutus check` returns exit 0.
     """
+    scaffold_init(tmp_path)
+    (tmp_path / "out").mkdir(exist_ok=True)
+    (tmp_path / "out" / "metrics.json").write_text('{"sharpe": 0.0}')
+    (tmp_path / "data" / "raw").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "data" / "processed").mkdir(parents=True, exist_ok=True)
+
+    # Scaffold manifest expects sharpe_ratio=0.0 with relative tol 0.05; emit a
+    # matching results.json from the in_sample step.
+    with pv_step("in_sample", repo_path=tmp_path) as r:
+        r.headline("sharpe_ratio", 0.0, unit="ratio")
+
+    runner = MagicMock()
+    runner.run.return_value = MagicMock(exit_code=0, stdout="", stderr="", duration_seconds=0.1)
+    res = scaffold_check(
+        tmp_path,
+        image_builder=MagicMock(return_value="img"),
+        runner=runner,
+        vision_client=None,
+        secrets={},
+    )
+    assert res.exit_code == 0
+
+
+def test_check_exit_code_one_when_headline_missing(tmp_path: Path):
+    """All required steps exit 0 but the SDK never wrote results.json — the
+    headline comparison fails, surfacing a soft-fail (exit code 1)."""
     scaffold_init(tmp_path)
     (tmp_path / "out").mkdir(exist_ok=True)
     (tmp_path / "out" / "metrics.json").write_text('{"sharpe": 0.0}')
@@ -65,7 +90,6 @@ def test_check_exit_code_one_when_all_steps_pass_but_headline_pending(tmp_path: 
         vision_client=None,
         secrets={},
     )
-    # Steps all passed (exit_code != 2); headline placeholder gives soft-fail 1.
     assert res.exit_code == 1
 
 

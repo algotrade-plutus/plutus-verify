@@ -27,6 +27,11 @@ from plutus_verify.spec.runtime.refcompare import (
     CompareResult,
     compare_reference_output,
 )
+from plutus_verify.spec.runtime.results import (
+    MalformedResultsError,
+    MissingResultsError,
+    load_results,
+)
 
 
 @dataclass
@@ -209,23 +214,50 @@ def _run_step(
 def _compare_headlines(
     er, repo_path: Path, step_results: dict[str, StepRuntimeResult]
 ) -> dict[str, "HeadlineResult"]:
-    """Compare headlines for one expected block.
+    """Compare expected headlines against metrics in <repo>/.plutus/run/<step_id>/results.json.
 
-    Task 4 will rewrite this to read each headline value by name from
-    ``.plutus/run/<step_id>/results.json`` (written by the SDK in Task 1
-    and read back via :mod:`plutus_verify.spec.runtime.results` in Task 2).
-    For now this is a placeholder that records each headline as not-yet-
-    evaluated so the orchestrator still returns a structurally-complete
-    :class:`V2RuntimeResult`.
+    Reads the results.json the step's SDK-instrumented script wrote, builds a
+    name → value lookup, and compares each expected headline. Locator dispatch
+    is gone — metrics are identified by canonical snake_case name only.
+
+    ``step_results`` is currently unused — reserved for future use (e.g.,
+    correlating step exit codes with metric absence to produce richer diagnostics).
     """
+    try:
+        results = load_results(repo_path, step_id=er.step_id)
+    except MissingResultsError as exc:
+        detail = f"results.json missing: {exc}"
+        return {
+            h.name: HeadlineResult(
+                name=h.name, ok=False, actual=None, expected=h.value, detail=detail
+            )
+            for h in er.headlines
+        }
+    except MalformedResultsError as exc:
+        detail = f"results.json malformed: {exc}"
+        return {
+            h.name: HeadlineResult(
+                name=h.name, ok=False, actual=None, expected=h.value, detail=detail
+            )
+            for h in er.headlines
+        }
+
+    metrics_by_name = {m.name: m for m in results.metrics}
     out: dict[str, HeadlineResult] = {}
     for h in er.headlines:
+        m = metrics_by_name.get(h.name)
+        if m is None:
+            out[h.name] = HeadlineResult(
+                name=h.name,
+                ok=False,
+                actual=None,
+                expected=h.value,
+                detail=f"metric '{h.name}' not produced in results.json",
+            )
+            continue
+        ok, detail = _within_tolerance(m.value, h.value, h.tolerance)
         out[h.name] = HeadlineResult(
-            name=h.name,
-            ok=False,
-            actual=None,
-            expected=h.value,
-            detail="headline comparison pending Task 4 (results.json reader wiring)",
+            name=h.name, ok=ok, actual=m.value, expected=h.value, detail=detail
         )
     return out
 

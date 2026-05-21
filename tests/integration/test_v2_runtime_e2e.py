@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from plutus_verify.sdk import step as pv_step
 from plutus_verify.spec.loader import load_manifest
 from plutus_verify.spec.runtime import V2RuntimeResult, run_v2_pipeline
 
@@ -31,6 +32,11 @@ def test_v2_runtime_end_to_end(tmp_path):
     runner = MagicMock()
     runner.run.return_value = MagicMock(exit_code=0, stdout="", stderr="", duration_seconds=0.1)
 
+    # Pre-write the results.json an SDK-instrumented script would have produced
+    # for the in_sample step (manifest expects sharpe_ratio=0.85, rel tol 5%).
+    with pv_step("in_sample", repo_path=work) as r:
+        r.headline("sharpe_ratio", 0.86, unit="ratio")
+
     result = run_v2_pipeline(
         manifest,
         repo_path=work,
@@ -47,7 +53,8 @@ def test_v2_runtime_end_to_end(tmp_path):
     assert result.data_tier_used == "raw"
     # 3 steps in fixture, all should have an entry in step_results
     assert set(result.step_results.keys()) == {"data_collection", "data_processing", "in_sample"}
-    # Headline comparison gets wired in Task 4 (results.json reader). For now we
-    # only verify the orchestrator still returns a placeholder entry for the
-    # configured headline.
-    assert "sharpe_ratio" in result.headline_results["in_sample"]
+    # Headlines are now compared by reading results.json by metric name.
+    hr = result.headline_results["in_sample"]["sharpe_ratio"]
+    assert hr.ok is True
+    assert hr.actual == 0.86
+    assert hr.expected == 0.85
