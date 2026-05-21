@@ -64,7 +64,7 @@ class Step:
 
 @dataclass(frozen=True)
 class Locate:
-    kind: Literal["stdout_table", "json_file", "file_regex"]
+    kind: Literal["stdout_table", "stdout_regex", "json_file", "file_regex"]
     path: Optional[str] = None
     row: Optional[str] = None
     col: Optional[int] = None

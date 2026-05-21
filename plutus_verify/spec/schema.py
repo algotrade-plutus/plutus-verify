@@ -13,7 +13,7 @@ _LOCATE = {
     "type": "object",
     "required": ["kind"],
     "properties": {
-        "kind": {"type": "string", "enum": ["stdout_table", "json_file", "file_regex"]},
+        "kind": {"type": "string", "enum": ["stdout_table", "stdout_regex", "json_file", "file_regex"]},
         "path": {"type": ["string", "null"]},
         "row": {"type": ["string", "null"]},
         "col": {"type": ["integer", "null"]},

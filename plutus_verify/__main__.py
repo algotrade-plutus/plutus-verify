@@ -373,22 +373,16 @@ def check_cmd(repo_path: Path, secrets_from_env: bool, data_tier: str) -> None:
 
     from plutus_verify.scaffold.check import scaffold_check
     from plutus_verify.spec.loader import ManifestLoadError
+    from plutus_verify.spec.runtime import BuildError, make_image_builder
 
     try:
         from plutus_verify.runner_docker import DockerRunner
 
-        def real_image_builder(dockerfile_text: str, rp: Path) -> str:
-            # TODO(plan3-task5-real-builder): wire to docker build via stdin.
-            # For now this is a placeholder so plutus check can be invoked
-            # against a fixture in CI without real docker.
-            raise NotImplementedError(
-                "real image_builder requires Docker; use programmatic API for tests"
-            )
-
         secrets = dict(os.environ) if secrets_from_env else {}
+        click.echo(f"building image from .plutus/Dockerfile.generated...")
         res = scaffold_check(
             Path(repo_path),
-            image_builder=real_image_builder,
+            image_builder=make_image_builder(),
             runner=DockerRunner(),
             vision_client=None,
             secrets=secrets,
@@ -399,16 +393,23 @@ def check_cmd(repo_path: Path, secrets_from_env: bool, data_tier: str) -> None:
         ctx = click.get_current_context()
         ctx.exit(2)
         return
-    except NotImplementedError as exc:
-        click.echo(f"not yet wired: {exc}", err=True)
+    except BuildError as exc:
+        click.echo(f"docker build failed:\n{exc}", err=True)
         ctx = click.get_current_context()
-        ctx.exit(3)
+        ctx.exit(2)
         return
 
     click.echo(f"image: {res.runtime_result.image}")
     click.echo(f"data tier: {res.runtime_result.data_tier_used}")
     for sid, sr in res.runtime_result.step_results.items():
-        click.echo(f"  step {sid}: exit={sr.exit_code} skipped={sr.skipped_reason}")
+        status = "ok" if sr.exit_code == 0 and sr.preflight_error is None else "FAIL"
+        skip = f" (skipped: {sr.skipped_reason})" if sr.skipped_reason else ""
+        pf = f" [preflight: {sr.preflight_error}]" if sr.preflight_error else ""
+        click.echo(f"  {status} {sid}: exit={sr.exit_code}{skip}{pf}")
+    for step_id, hrs in res.runtime_result.headline_results.items():
+        for name, h in hrs.items():
+            marker = "ok" if h.ok else "FAIL"
+            click.echo(f"  {marker} {step_id}.{name}: actual={h.actual} expected={h.expected} {h.detail}")
     ctx = click.get_current_context()
     ctx.exit(res.exit_code)
 

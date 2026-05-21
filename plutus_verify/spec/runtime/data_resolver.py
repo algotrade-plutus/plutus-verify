@@ -102,17 +102,61 @@ def _layout_present(repo_path: Path, expected_layout: tuple[str, ...]) -> bool:
 
 
 def default_downloader(source: DataSource, target_dir: Path) -> bool:
-    """Built-in downloader. Dispatches by ``source.kind``."""
+    """Built-in downloader. Dispatches by ``source.kind``.
+
+    Honors ``source.expected_layout``'s common parent: downloads land in
+    ``<target_dir>/<common_parent>`` so a Google Drive folder whose contents
+    are ``is/...`` + ``os/...`` end up under ``<target_dir>/data/`` when the
+    expected_layout is ``["data/is/*", "data/os/*"]``.
+    """
+    common = _common_parent_dir(source.expected_layout)
+    download_into = target_dir / common if common else target_dir
     kind = source.kind
     if kind == "google_drive":
-        return _download_google_drive(source.url, target_dir)
+        return _download_google_drive(source.url, download_into)
     if kind in ("github_release", "http"):
-        return _download_url_archive(source.url, target_dir)
+        return _download_url_archive(source.url, download_into)
     if kind == "s3":
         _log.warning("s3 downloader is not implemented in Plan 2; skipping %s", source.url)
         return False
     _log.warning("unknown data-source kind %r; skipping %s", kind, source.url)
     return False
+
+
+def _common_parent_dir(expected_layout: tuple[str, ...]) -> str:
+    """Longest common parent directory of all entries in ``expected_layout``.
+
+    Examples:
+        ('data/is/', 'data/os/')      -> 'data'
+        ('data/raw/*.parquet',)       -> 'data/raw'
+        ('out/m.json', 'out/c.png')   -> 'out'
+        ()                            -> ''
+    """
+    from pathlib import PurePath
+
+    if not expected_layout:
+        return ""
+    parts_list: list[tuple[str, ...]] = []
+    for entry in expected_layout:
+        stripped = entry.rstrip("/")
+        # If entry is a glob, take everything before the first wildcard segment
+        if any(ch in stripped for ch in "*?["):
+            segs = stripped.split("/")
+            for i, seg in enumerate(segs):
+                if any(ch in seg for ch in "*?["):
+                    segs = segs[:i]
+                    break
+            parts_list.append(tuple(segs))
+            continue
+        pp = PurePath(stripped)
+        parts_list.append(pp.parts if entry.endswith("/") else pp.parent.parts)
+    common: list[str] = []
+    for tup in zip(*parts_list):
+        if all(x == tup[0] for x in tup):
+            common.append(tup[0])
+        else:
+            break
+    return "/".join(common)
 
 
 def _download_google_drive(url: str, target_dir: Path) -> bool:
