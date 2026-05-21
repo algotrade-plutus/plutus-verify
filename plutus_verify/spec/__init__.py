@@ -20,7 +20,7 @@ from plutus_verify.spec.manifest import (
     Step,
     Tolerance,
 )
-# from plutus_verify.spec.loader import ManifestLoadError, load_manifest  # re-enabled in Task 3
+from plutus_verify.spec.loader import ManifestLoadError, load_manifest
 
 __all__ = [
     "DataSource",
@@ -30,10 +30,12 @@ __all__ = [
     "Headline",
     "Locate",
     "Manifest",
+    "ManifestLoadError",
     "NineStepCoverage",
     "ReferenceOutput",
     "Repo",
     "Secret",
     "Step",
     "Tolerance",
+    "load_manifest",
 ]
