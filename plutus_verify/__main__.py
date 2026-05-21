@@ -1,8 +1,14 @@
-"""CLI entrypoint for ``plutus-verify``.
+"""CLI entrypoint for ``plutus-verify`` / ``plutus``.
 
-The CLI is a thin wrapper around :func:`plutus_verify.pipeline.run_pipeline`.
-It chooses real adapters (OpenAI-compatible LLM client, repo2docker builder,
-Docker runner, Gemma vision client) and injects them.
+Provides a Click group with subcommands:
+  - verify   : original single-command verifier (PLUTUS-standard repo)
+  - init     : scaffold .plutus/manifest.yaml + .github/workflows/plutus.yml
+  - check    : run the native v2 pipeline locally against a working copy
+  - snapshot : capture step outputs into .plutus/expected/
+
+The legacy ``plutus-verify <git_url>`` form is preserved via the backward-compat
+``main()`` entrypoint which injects 'verify' when the first arg isn't a known
+subcommand.
 """
 from __future__ import annotations
 
@@ -63,7 +69,23 @@ def _default_run_id() -> str:
     return dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
-@click.command(context_settings={"show_default": True})
+# ---------------------------------------------------------------------------
+# Top-level CLI group
+# ---------------------------------------------------------------------------
+
+@click.group(invoke_without_command=True, context_settings={"help_option_names": ["-h", "--help"]})
+@click.pass_context
+def cli(ctx: click.Context) -> None:
+    """plutus: reproducibility tooling for PLUTUS-standard repos."""
+    if ctx.invoked_subcommand is None:
+        click.echo(cli.get_help(ctx))
+
+
+# ---------------------------------------------------------------------------
+# verify subcommand (original single-command behaviour)
+# ---------------------------------------------------------------------------
+
+@cli.command("verify", context_settings={"show_default": True})
 @click.argument("source", required=False)
 @click.option("--ref", default=None, help="git ref (branch or sha) to check out")
 @click.option(
@@ -120,7 +142,7 @@ def _default_run_id() -> str:
     help="Skip the build stage and use this pre-existing docker image tag.",
 )
 @click.option("--batch", "batch_file", type=click.Path(path_type=Path, dir_okay=False), default=None)
-def main(
+def verify_cmd(
     source: Optional[str],
     ref: Optional[str],
     secrets_path: Optional[Path],
@@ -315,6 +337,120 @@ def _run_one(
     click.echo(f"reports: {result.out_dir}/report.md  {result.out_dir}/report.json")
     click.echo(f"trail: {result.out_dir}/run.log")
     return result.overall.exit_code
+
+
+# ---------------------------------------------------------------------------
+# init subcommand
+# ---------------------------------------------------------------------------
+
+@cli.command("init")
+@click.argument("repo_path", type=click.Path(path_type=Path, file_okay=False), default=".")
+@click.option("--force", is_flag=True, help="overwrite existing manifest/workflow")
+def init_cmd(repo_path: Path, force: bool) -> None:
+    """Scaffold .plutus/manifest.yaml and .github/workflows/plutus.yml."""
+    from plutus_verify.scaffold.init import scaffold_init
+
+    res = scaffold_init(Path(repo_path), force=force)
+    click.echo(f"created manifest: {res.created_manifest}")
+    click.echo(f"created workflow: {res.created_workflow}")
+
+
+# ---------------------------------------------------------------------------
+# check subcommand
+# ---------------------------------------------------------------------------
+
+@cli.command("check")
+@click.argument("repo_path", type=click.Path(path_type=Path, file_okay=False), default=".")
+@click.option("--secrets-from-env", is_flag=True, help="use environment variables as secrets")
+@click.option(
+    "--data-tier",
+    type=click.Choice(["processed", "raw", "code", "auto"]),
+    default="auto",
+)
+def check_cmd(repo_path: Path, secrets_from_env: bool, data_tier: str) -> None:
+    """Run the v2 pipeline locally against a working copy."""
+    import os
+
+    from plutus_verify.scaffold.check import scaffold_check
+    from plutus_verify.spec.loader import ManifestLoadError
+
+    try:
+        from plutus_verify.runner_docker import DockerRunner
+
+        def real_image_builder(dockerfile_text: str, rp: Path) -> str:
+            # TODO(plan3-task5-real-builder): wire to docker build via stdin.
+            # For now this is a placeholder so plutus check can be invoked
+            # against a fixture in CI without real docker.
+            raise NotImplementedError(
+                "real image_builder requires Docker; use programmatic API for tests"
+            )
+
+        secrets = dict(os.environ) if secrets_from_env else {}
+        res = scaffold_check(
+            Path(repo_path),
+            image_builder=real_image_builder,
+            runner=DockerRunner(),
+            vision_client=None,
+            secrets=secrets,
+            force_data_tier=None if data_tier == "auto" else data_tier,
+        )
+    except ManifestLoadError as exc:
+        click.echo(f"error: {exc}", err=True)
+        ctx = click.get_current_context()
+        ctx.exit(2)
+        return
+    except NotImplementedError as exc:
+        click.echo(f"not yet wired: {exc}", err=True)
+        ctx = click.get_current_context()
+        ctx.exit(3)
+        return
+
+    click.echo(f"image: {res.runtime_result.image}")
+    click.echo(f"data tier: {res.runtime_result.data_tier_used}")
+    for sid, sr in res.runtime_result.step_results.items():
+        click.echo(f"  step {sid}: exit={sr.exit_code} skipped={sr.skipped_reason}")
+    ctx = click.get_current_context()
+    ctx.exit(res.exit_code)
+
+
+# ---------------------------------------------------------------------------
+# snapshot subcommand
+# ---------------------------------------------------------------------------
+
+@cli.command("snapshot")
+@click.argument("repo_path", type=click.Path(path_type=Path, file_okay=False), default=".")
+@click.option("--no-run", is_flag=True, help="don't run check first; snapshot existing outputs")
+def snapshot_cmd(repo_path: Path, no_run: bool) -> None:
+    """Capture step outputs into .plutus/expected/."""
+    from plutus_verify.scaffold.snapshot import scaffold_snapshot
+
+    if not no_run:
+        click.echo(
+            "error: running check before snapshot requires --no-run for now (real builder not wired)",
+            err=True,
+        )
+        ctx = click.get_current_context()
+        ctx.exit(3)
+        return
+
+    res = scaffold_snapshot(Path(repo_path), run_check_first=False)
+    click.echo(f"copied {res.files_copied} file(s) to .plutus/expected/")
+    for n in res.notes:
+        click.echo(f"  {n}")
+
+
+# ---------------------------------------------------------------------------
+# Backward-compatible entrypoint
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    """Backward-compatible bare entrypoint: ``plutus-verify <git_url>`` → ``plutus verify <git_url>``."""
+    args = sys.argv[1:]
+    # If first arg looks like a known subcommand, pass through; else inject 'verify'
+    known = {"init", "check", "snapshot", "verify", "--help", "-h", "--version"}
+    if args and args[0] not in known and not args[0].startswith("-"):
+        args = ["verify"] + args
+    cli(args=args, prog_name="plutus-verify", standalone_mode=True)
 
 
 if __name__ == "__main__":
