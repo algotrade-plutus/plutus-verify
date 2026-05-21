@@ -200,7 +200,33 @@ def run_pipeline(
     extract_outcome: str
     extract_summary: str
     extract_artifacts: list[str] = []
-    if inputs.pre_loaded_plan is not None:
+    spec_path = ing.repo_path / ".plutus" / "manifest.yaml"
+    if spec_path.exists():
+        from plutus_verify.spec.adapter import to_extracted_plan
+        from plutus_verify.spec.loader import load_manifest
+
+        try:
+            manifest = load_manifest(ing.repo_path)
+        except Exception as exc:
+            progress.error("extract", f"v2 spec load failed: {exc}")
+            raise
+        plan = to_extracted_plan(manifest)
+        plan = _apply_artifact_only_override(plan, inputs.config.overrides.artifact_only_steps)
+        plan_path.write_text(json.dumps(_plan_to_dict(plan), indent=2))
+        n_steps = len(plan.steps)
+        n_metrics = sum(len(er.metrics) for er in plan.expected_results)
+        n_charts = sum(len(er.charts) for er in plan.expected_results)
+        extract_outcome = "ok"
+        extract_summary = (
+            f"v2 spec — {n_steps} steps, {n_metrics} metrics, {n_charts} charts"
+        )
+        progress.stage(
+            "extract",
+            f"loaded .plutus/manifest.yaml — {extract_summary}  "
+            f"({time.monotonic() - stage_start:.1f}s)",
+        )
+        extract_artifacts = ["plan.json", "manifest.yaml"]
+    elif inputs.pre_loaded_plan is not None:
         plan = inputs.pre_loaded_plan
         # Persist so the re-run is auditable
         if not plan_path.exists():
