@@ -33,7 +33,7 @@ class Secret:
 
 @dataclass(frozen=True)
 class DataSource:
-    kind: str  # google_drive | s3 | github_release | http | manual
+    kind: str
     url: str
     expected_layout: tuple[str, ...]
     satisfies: tuple[str, ...]
@@ -50,7 +50,7 @@ class DataSourceTiers:
 @dataclass(frozen=True)
 class Step:
     id: str
-    nine_step: Optional[str]  # one of NINE_STEP_KEYS or None for free-form
+    nine_step: Optional[str]
     required: bool
     command: Optional[str] = None
     label: Optional[str] = None
