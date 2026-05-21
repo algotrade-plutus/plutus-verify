@@ -11,6 +11,8 @@ from typing import Any, Literal, Optional
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError
 
+# v1 ExtractedPlan copy of the 9-step keys; mirrors plutus_verify.spec.manifest.NINE_STEP_KEYS.
+# The two converge when the legacy schema is deleted in Plan 4.
 NINE_STEP_KEYS = (
     "step_1_hypothesis",
     "step_2_data_collection",

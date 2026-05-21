@@ -122,3 +122,52 @@ def test_pipeline_falls_back_to_extract_when_no_dotplutus(tmp_path: Path, monkey
     )
     assert "from-sentinel" in result.plan.extraction_notes
     assert result.plan.repo.name == "SentinelRepo"
+
+
+def test_pipeline_propagates_invalid_manifest_error(tmp_path: Path, monkeypatch):
+    """An invalid .plutus/manifest.yaml must surface as a pipeline error,
+    not be silently swallowed or treated as a fallback to the LLM path."""
+    from plutus_verify.spec.loader import ManifestLoadError
+
+    repo_path = tmp_path / "repo"
+    repo_path.mkdir()
+    (repo_path / "README.md").write_text("# bad")
+    plutus = repo_path / ".plutus"
+    plutus.mkdir()
+    # schema_version is wrong — schema validation will reject it
+    (plutus / "manifest.yaml").write_text(
+        'schema_version: "9.99"\nrepo: {name: B, primary_language: python}\n'
+    )
+    meta_path = tmp_path / "meta.json"
+    meta_path.write_text("{}")
+
+    from plutus_verify import pipeline as pipeline_mod
+
+    monkeypatch.setattr(
+        pipeline_mod,
+        "ingest",
+        lambda *a, **kw: IngestResult(
+            git_url=str(repo_path),
+            repo_path=repo_path,
+            readme_path=repo_path / "README.md",
+            commit_sha="0" * 40,
+            branch="main",
+            meta_path=meta_path,
+        ),
+    )
+
+    inputs = PipelineInputs(
+        source=str(repo_path),
+        out_dir=tmp_path / "out",
+        config=Config(),
+        skip_clone=True,
+        extract_only=True,
+    )
+    with pytest.raises(ManifestLoadError):
+        run_pipeline(
+            inputs,
+            llm_client=MagicMock(),
+            builder=MagicMock(),
+            runner=MagicMock(),
+            vision=MagicMock(),
+        )

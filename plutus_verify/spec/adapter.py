@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 _FREE_FORM_PLACEHOLDER = "step_4_in_sample"
 
 
-def to_extracted_plan(m: Manifest):
+def to_extracted_plan(m: Manifest) -> "ExtractedPlan":
     """Convert v2 Manifest to v1 ExtractedPlan.
 
     Returns an ExtractedPlan with intentional lossy translation documented

@@ -118,6 +118,8 @@ class Manifest:
     nine_step_coverage: dict[str, NineStepCoverage] = field(default_factory=dict)
 
 
+# v2 manifest copy of the 9-step keys; mirrors plutus_verify.extract.plan.NINE_STEP_KEYS.
+# The two converge when the legacy schema is deleted in Plan 4.
 NINE_STEP_KEYS: tuple[str, ...] = (
     "step_1_hypothesis",
     "step_2_data_collection",
