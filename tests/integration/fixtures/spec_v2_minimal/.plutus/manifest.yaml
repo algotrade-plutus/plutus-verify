@@ -1,0 +1,47 @@
+schema_version: "2.0"
+repo:
+  name: SpecV2Minimal
+  primary_language: python
+env:
+  base: python
+  python_version: "3.11"
+  requirements_file: requirements.txt
+secrets: []
+data_sources:
+  processed: []
+  raw:
+    - kind: github_release
+      url: https://example.com/raw.tar.gz
+      expected_layout: ["data/raw/*.parquet"]
+      satisfies: [data_collection]
+steps:
+  - id: data_collection
+    nine_step: step_2_data_collection
+    required: true
+    network: bridge
+    command: "python -c 'print(\"collect\")'"
+    outputs: ["data/raw/x.parquet"]
+  - id: data_processing
+    nine_step: step_3_data_processing
+    required: true
+    command: "python -c 'print(\"preprocess\")'"
+    inputs: [data/raw]
+    outputs: ["data/processed/x.parquet"]
+  - id: in_sample
+    nine_step: step_4_in_sample
+    required: true
+    command: "python -c 'print(\"backtest\")'"
+    inputs: [data/processed]
+    outputs: ["out/metrics.json"]
+expected:
+  - step_id: in_sample
+    headlines:
+      - name: sharpe_ratio
+        value: 0.85
+        locate: {kind: json_file, path: "out/metrics.json", jsonpath: "$.sharpe"}
+        tolerance: {kind: relative, value: 0.05}
+    reference_outputs: []
+nine_step_coverage:
+  step_2_data_collection: {present: true, section: "Data"}
+  step_3_data_processing: {present: true, section: "Preprocess"}
+  step_4_in_sample: {present: true, section: "In-sample"}

@@ -1,0 +1,1 @@
+# empty by design — fixture is for spec-pipeline tests, not real execution
