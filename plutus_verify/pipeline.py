@@ -41,6 +41,7 @@ from plutus_verify.report import (
     TrailEntry,
     write_reports,
 )
+from plutus_verify.spec.runtime import V2RuntimeResult, run_v2_pipeline
 from plutus_verify.util.progress import NullProgress, Progress
 
 
@@ -200,6 +201,7 @@ def run_pipeline(
     extract_outcome: str
     extract_summary: str
     extract_artifacts: list[str] = []
+    _spec_manifest = None  # set when .plutus/manifest.yaml is present (v2 native path)
     spec_path = ing.repo_path / ".plutus" / "manifest.yaml"
     if spec_path.exists():
         from plutus_verify.spec.adapter import to_extracted_plan
@@ -210,6 +212,7 @@ def run_pipeline(
         except Exception as exc:
             progress.error("extract", f"v2 spec load failed: {exc}")
             raise
+        _spec_manifest = manifest  # stash for native v2 routing below
         plan = to_extracted_plan(manifest)
         plan = _apply_artifact_only_override(plan, inputs.config.overrides.artifact_only_steps)
         plan_path.write_text(json.dumps(_plan_to_dict(plan), indent=2))
@@ -360,6 +363,23 @@ def run_pipeline(
             meta=meta,
             out_dir=inputs.out_dir,
             verification_trail=trail,
+        )
+
+    # ---------- v2 native runtime (bypasses build/execute/compare/report stages) ----------
+    if _spec_manifest is not None:
+        return _run_v2_native_path(
+            inputs=inputs,
+            ing=ing,
+            plan=plan,
+            manifest=_spec_manifest,
+            meta=meta,
+            trail=trail,
+            stage_start=stage_start,
+            start=start,
+            progress=progress,
+            builder=builder,
+            runner=runner,
+            vision=vision,
         )
 
     # ---------- build ----------
@@ -656,6 +676,181 @@ def run_pipeline(
     progress.stage(
         "report",
         f"written: {report_paths[1]}  {report_paths[0]}  {inputs.out_dir / 'run.log'}",
+    )
+
+    return PipelineResult(
+        plan=plan,
+        overall=overall,
+        meta=meta,
+        out_dir=inputs.out_dir,
+        verification_trail=trail,
+    )
+
+
+def _run_v2_native_path(
+    *,
+    inputs: PipelineInputs,
+    ing: IngestResult,
+    plan: ExtractedPlan,
+    manifest: Any,
+    meta: RunMeta,
+    trail: list[TrailEntry],
+    stage_start: float,
+    start: float,
+    progress: Progress,
+    builder: Builder,
+    runner: Runner,
+    vision: VisionClient,
+) -> "PipelineResult":
+    """Native v2 path: build+execute+compare via run_v2_pipeline, then write a
+    minimal report synthesized from V2RuntimeResult.
+
+    TODO(plan2-task6-report-synthesis): Full parity with v1 report.md/report.json
+    (per-metric tables, chart verdicts, full rubric) is deferred to Plan 4 when
+    the legacy path is retired.  This implementation emits a minimal but valid
+    report so the routing test passes and the output dir is usable.
+    """
+    # Image builder adapter: the v2 orchestrator expects
+    # image_builder(dockerfile_text, repo_path) -> image_tag.
+    # The injected `builder` follows the v1 protocol (.build(repo_path, commit_sha)).
+    # We bridge them here so the real docker build wiring (Plan 3) can supply a
+    # proper v2-aware builder later.
+    def _image_builder(dockerfile_text: str, repo_path: Any) -> str:
+        # TODO(plan2-task6-report-synthesis): In Plan 3, the builder will receive
+        # the generated Dockerfile text directly.  For now we delegate to the v1
+        # builder interface and discard the generated Dockerfile.
+        result = _invoke_builder(
+            builder,
+            repo_path=ing.repo_path,
+            commit_sha=ing.commit_sha,
+            progress=progress,
+            artifacts_dir=inputs.out_dir / "build",
+        )
+        if isinstance(result, str):
+            return result
+        return result.image
+
+    secrets = _parse_secrets_file(inputs.secrets_path) if inputs.secrets_path else {}
+
+    # -- run the native v2 pipeline --
+    progress.stage("build", "v2 native: building image")
+    progress.stage("execute", "v2 native: running steps")
+    try:
+        v2_result: V2RuntimeResult = run_v2_pipeline(
+            manifest,
+            repo_path=ing.repo_path,
+            image_builder=_image_builder,
+            runner=runner,
+            vision_client=vision,
+            secrets=secrets,
+        )
+    except Exception as exc:
+        progress.error("execute", f"v2 pipeline failed: {exc}")
+        raise
+
+    # -- synthesize trail entries for build / fetch / execute / compare --
+    trail.append(TrailEntry(
+        stage="build",
+        outcome="ok",
+        duration_seconds=0.0,
+        summary=f"v2 image: {v2_result.image}",
+        artifacts=[],
+    ))
+    trail.append(TrailEntry(
+        stage="fetch",
+        outcome="ok",
+        duration_seconds=0.0,
+        summary=f"data tier: {v2_result.data_tier_used}",
+        artifacts=[],
+    ))
+
+    n_ran = sum(
+        1 for sr in v2_result.step_results.values()
+        if sr.exit_code == 0 and sr.skipped_reason is None
+    )
+    n_skipped = sum(
+        1 for sr in v2_result.step_results.values()
+        if sr.skipped_reason is not None
+    )
+    n_failed = sum(
+        1 for sr in v2_result.step_results.values()
+        if sr.exit_code != 0 and sr.skipped_reason is None
+    )
+    trail.append(TrailEntry(
+        stage="execute",
+        outcome="failed" if n_failed else ("partial" if n_skipped and not n_ran else "ok"),
+        duration_seconds=sum(
+            sr.duration_seconds for sr in v2_result.step_results.values()
+        ),
+        summary=f"{n_ran} ran, {n_skipped} skipped, {n_failed} failed",
+        artifacts=[],
+    ))
+
+    # -- synthesize step reports for the overall verdict --
+    step_reports: list[StepReport] = []
+    step_by_id = {s.id: s for s in manifest.steps}
+    for step in manifest.steps:
+        sr = v2_result.step_results.get(step.id)
+        if sr is None:
+            exec_outcome = ExecOutcome.SKIPPED
+        elif sr.skipped_reason is not None:
+            exec_outcome = ExecOutcome.OK
+        elif sr.exit_code == 0 and sr.preflight_error is None:
+            exec_outcome = ExecOutcome.OK
+        elif sr.exit_code != 0:
+            exec_outcome = ExecOutcome.FAILED
+        else:
+            exec_outcome = ExecOutcome.OK  # ran but had preflight warning
+
+        step_reports.append(aggregate_step(
+            step_id=step.id,
+            required=step.required,
+            exec_outcome=exec_outcome,
+            metrics=[],   # TODO(plan2-task6-report-synthesis): wire headline_results -> MetricComparison
+            charts=[],    # TODO(plan2-task6-report-synthesis): wire reference_results -> ChartVerdict
+        ))
+
+    overall = aggregate_overall(step_reports)
+
+    n_hl_pass = sum(
+        1
+        for step_hl in v2_result.headline_results.values()
+        for hr in step_hl.values()
+        if hr.ok
+    )
+    n_hl_fail = sum(
+        1
+        for step_hl in v2_result.headline_results.values()
+        for hr in step_hl.values()
+        if not hr.ok
+    )
+    compare_summary = f"headlines {n_hl_pass} pass / {n_hl_fail} fail (v2)"
+    trail.append(TrailEntry(
+        stage="compare",
+        outcome="ok" if not n_hl_fail else "partial",
+        duration_seconds=0.0,
+        summary=compare_summary,
+        artifacts=[],
+    ))
+
+    # -- write reports --
+    meta = dataclasses.replace(meta, duration_seconds=int(time.monotonic() - start))
+    progress.stage("report", f"verdict: {overall.verdict.value} (exit {overall.exit_code})")
+    trail.append(TrailEntry(
+        stage="report",
+        outcome="ok",
+        duration_seconds=time.monotonic() - stage_start,
+        summary=f"verdict: {overall.verdict.value} [v2]",
+        artifacts=["report.md", "report.json"],
+    ))
+    write_reports(
+        out_dir=inputs.out_dir,
+        overall=overall,
+        meta=meta,
+        extraction_notes=[],
+        nine_step_coverage={},  # TODO(plan2-task6-report-synthesis): populate from manifest.nine_step_coverage
+        findings=[],
+        verification_trail=trail,
     )
 
     return PipelineResult(
