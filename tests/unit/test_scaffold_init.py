@@ -50,3 +50,46 @@ def test_init_skeleton_is_loadable(tmp_path: Path):
 
     m = load_manifest(tmp_path)
     assert m.schema_version == "2.0"
+
+
+def test_init_writes_example_script(tmp_path: Path):
+    """`plutus init` should drop a `.plutus/example_script.py` showing how to
+    wire `pv.step(...)` into an author's reproducibility script."""
+    scaffold_init(tmp_path)
+    example = tmp_path / ".plutus" / "example_script.py"
+    assert example.exists()
+    text = example.read_text()
+    # Has a top-of-file docstring (template, not executable)
+    assert text.lstrip().startswith('"""')
+    # Demonstrates the SDK call patterns authors must copy
+    assert "pv.step(" in text
+    assert "r.headline(" in text
+
+
+def test_init_returns_created_example_script_true_on_first_init(tmp_path: Path):
+    res = scaffold_init(tmp_path)
+    assert res.created_example_script is True
+    res2 = scaffold_init(tmp_path)
+    assert res2.created_example_script is False
+
+
+def test_init_overwrites_example_script_with_force(tmp_path: Path):
+    plutus = tmp_path / ".plutus"
+    plutus.mkdir()
+    (plutus / "example_script.py").write_text("# stale custom content\n")
+    res = scaffold_init(tmp_path, force=True)
+    assert res.created_example_script is True
+    new_content = (plutus / "example_script.py").read_text()
+    assert "# stale custom content" not in new_content
+    assert "pv.step(" in new_content
+
+
+def test_example_script_imports_cleanly():
+    """The EXAMPLE_SCRIPT template must be syntactically valid Python.
+
+    We compile (not exec) — exec'ing would call `pv.step(...)` and write a
+    real results.json at the cwd.
+    """
+    from plutus_verify.scaffold.templates import EXAMPLE_SCRIPT
+
+    compile(EXAMPLE_SCRIPT, "<example>", "exec")

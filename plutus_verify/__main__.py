@@ -353,6 +353,8 @@ def init_cmd(repo_path: Path, force: bool) -> None:
     res = scaffold_init(Path(repo_path), force=force)
     click.echo(f"created manifest: {res.created_manifest}")
     click.echo(f"created workflow: {res.created_workflow}")
+    click.echo(f"created example script: {res.created_example_script}")
+    click.echo("  - see .plutus/example_script.py for how to instrument your scripts")
 
 
 # ---------------------------------------------------------------------------

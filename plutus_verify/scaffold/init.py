@@ -8,7 +8,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from plutus_verify.scaffold.templates import MANIFEST_SKELETON, WORKFLOW_YAML
+from plutus_verify.scaffold.templates import (
+    EXAMPLE_SCRIPT,
+    MANIFEST_SKELETON,
+    WORKFLOW_YAML,
+)
 
 
 @dataclass(frozen=True)
@@ -17,6 +21,7 @@ class InitResult:
     created_manifest: bool
     created_workflow: bool
     created_expected_dir: bool
+    created_example_script: bool
 
 
 def scaffold_init(repo_path: Path, *, force: bool = False) -> InitResult:
@@ -32,6 +37,12 @@ def scaffold_init(repo_path: Path, *, force: bool = False) -> InitResult:
         manifest_path.write_text(MANIFEST_SKELETON)
         created_manifest = True
 
+    example_path = plutus_dir / "example_script.py"
+    created_example = False
+    if force or not example_path.exists():
+        example_path.write_text(EXAMPLE_SCRIPT)
+        created_example = True
+
     workflow_dir = repo_path / ".github" / "workflows"
     workflow_dir.mkdir(parents=True, exist_ok=True)
     workflow_path = workflow_dir / "plutus.yml"
@@ -45,4 +56,5 @@ def scaffold_init(repo_path: Path, *, force: bool = False) -> InitResult:
         created_manifest=created_manifest,
         created_workflow=created_workflow,
         created_expected_dir=created_expected,
+        created_example_script=created_example,
     )
