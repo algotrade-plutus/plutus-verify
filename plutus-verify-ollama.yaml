@@ -1,0 +1,10 @@
+llm:
+  endpoint: http://localhost:11434/v1
+  model: gemma4:26b-a4b-it-q8_0
+  vision_model: gemma4:26b-a4b-it-q8_0
+  temperature: 0.0
+  max_retries: 3
+  timeout_seconds: 90      # content-idle timeout (no token for N s); not wall-clock
+  num_ctx: 32768
+  prewarm: true
+  think: false             # Q8 + think:true loops on step-name enumeration; disable to test
