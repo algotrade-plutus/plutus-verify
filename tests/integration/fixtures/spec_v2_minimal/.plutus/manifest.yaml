@@ -37,8 +37,8 @@ expected:
   - step_id: in_sample
     headlines:
       - name: sharpe_ratio
+        display_name: "Sharpe Ratio"
         value: 0.85
-        locate: {kind: json_file, path: "out/metrics.json", jsonpath: "$.sharpe"}
         tolerance: {kind: relative, value: 0.05}
     reference_outputs: []
 nine_step_coverage:

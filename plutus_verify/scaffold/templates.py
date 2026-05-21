@@ -54,9 +54,13 @@ steps:
 expected:
   - step_id: in_sample
     headlines:
+      # Headlines identify metrics by snake_case `name`. The v2 runtime reads
+      # values from `.plutus/run/<step_id>/results.json` (written by the SDK,
+      # `from plutus_verify.sdk import Run`). `display_name` is optional and
+      # used for human-readable report labels.
       - name: sharpe_ratio
+        display_name: "Sharpe Ratio"
         value: 0.0           # TODO: replace with the value you got
-        locate: {kind: json_file, path: "out/metrics.json", jsonpath: "$.sharpe"}
         tolerance: {kind: relative, value: 0.05}
     reference_outputs: []
 

@@ -157,18 +157,24 @@ def to_extracted_plan(m: Manifest) -> "ExtractedPlan":
 
     # Process expected results
     def _build_expected(er):
+        def _synthetic_locate(h_name: str) -> "PlanLocate":
+            # v2 headlines no longer carry a locator; the SDK writes a canonical
+            # results.json (Task 1) and the v2 runtime reads it natively (Task 2 + 4).
+            # The v1 ExpectedMetric still requires a locate field, so we synthesize
+            # one that points at the SDK's results.json. This locator is never
+            # exercised by the v2 path; it exists only so the audit-trail
+            # ExtractedPlan stays constructible.
+            return PlanLocate(
+                kind="json_file",
+                path=f".plutus/run/{er.step_id}/results.json",
+                jsonpath=f"$.metrics[?(@.name=='{h_name}')].value",
+            )
+
         metrics = tuple(
             ExpectedMetric(
                 name=h.name,
                 value=h.value,
-                locate=PlanLocate(
-                    kind=h.locate.kind,
-                    row=h.locate.row,
-                    col=h.locate.col,
-                    path=h.locate.path,
-                    jsonpath=h.locate.jsonpath,
-                    pattern=h.locate.pattern,
-                ),
+                locate=_synthetic_locate(h.name),
                 tolerance=PlanTolerance(kind=h.tolerance.kind, value=h.tolerance.value),
             )
             for h in er.headlines

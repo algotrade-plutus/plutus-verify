@@ -86,12 +86,8 @@ def test_schema_accepts_expected_with_headline_and_reference_output():
             "headlines": [
                 {
                     "name": "sharpe_ratio",
+                    "display_name": "Sharpe Ratio",
                     "value": 0.85,
-                    "locate": {
-                        "kind": "json_file",
-                        "path": "out/metrics.json",
-                        "jsonpath": "$.sharpe",
-                    },
                     "tolerance": {"kind": "relative", "value": 0.05},
                 }
             ],
@@ -105,6 +101,45 @@ def test_schema_accepts_expected_with_headline_and_reference_output():
         }
     )
     Draft202012Validator(MANIFEST_SCHEMA).validate(d)
+
+
+def test_schema_rejects_locate_property_on_headline():
+    d = _minimal_valid_dict()
+    d["expected"].append(
+        {
+            "step_id": "in_sample",
+            "headlines": [
+                {
+                    "name": "sharpe_ratio",
+                    "value": 0.85,
+                    "tolerance": {"kind": "relative", "value": 0.05},
+                    "locate": {"kind": "json_file", "path": "x.json", "jsonpath": "$.s"},
+                }
+            ],
+        }
+    )
+    v = Draft202012Validator(MANIFEST_SCHEMA)
+    errs = list(v.iter_errors(d))
+    assert errs, "expected schema to reject `locate` on headline (additionalProperties=False)"
+
+
+def test_schema_rejects_non_snake_case_headline_name():
+    d = _minimal_valid_dict()
+    d["expected"].append(
+        {
+            "step_id": "in_sample",
+            "headlines": [
+                {
+                    "name": "Sharpe Ratio",  # spaces + caps → rejected
+                    "value": 0.85,
+                    "tolerance": {"kind": "relative", "value": 0.05},
+                }
+            ],
+        }
+    )
+    v = Draft202012Validator(MANIFEST_SCHEMA)
+    errs = list(v.iter_errors(d))
+    assert errs, "expected schema to reject non-snake_case headline name"
 
 
 def test_schema_rejects_unknown_compare_kind():

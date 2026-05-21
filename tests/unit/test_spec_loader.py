@@ -127,8 +127,8 @@ expected:
   - step_id: in_sample
     headlines:
       - name: sharpe_ratio
+        display_name: "Sharpe Ratio"
         value: 0.85
-        locate: {kind: json_file, path: "out/metrics.json", jsonpath: "$.sharpe"}
         tolerance: {kind: relative, value: 0.05}
     reference_outputs:
       - path: "out/metrics.json"
@@ -147,5 +147,23 @@ nine_step_coverage:
     assert len(m.data_sources.processed) == 1
     assert m.data_sources.processed[0].satisfies == ("data_collection", "data_processing")
     assert m.expected[0].headlines[0].value == 0.85
+    assert m.expected[0].headlines[0].display_name == "Sharpe Ratio"
     assert m.expected[0].reference_outputs[1].threshold == 0.7
     assert m.nine_step_coverage["step_1_hypothesis"].present is True
+
+
+def test_load_headline_without_display_name_keeps_it_none():
+    yaml_text = _MIN_YAML.replace(
+        "expected: []",
+        """expected:
+  - step_id: in_sample
+    headlines:
+      - name: sharpe_ratio
+        value: 0.85
+        tolerance: {kind: relative, value: 0.05}
+    reference_outputs: []""",
+    )
+    m = load_manifest_from_yaml_text(yaml_text)
+    h = m.expected[0].headlines[0]
+    assert h.name == "sharpe_ratio"
+    assert h.display_name is None

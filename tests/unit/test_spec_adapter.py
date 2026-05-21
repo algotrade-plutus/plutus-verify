@@ -22,8 +22,8 @@ expected:
   - step_id: in_sample
     headlines:
       - name: sharpe_ratio
+        display_name: "Sharpe Ratio"
         value: 0.85
-        locate: {kind: json_file, path: "out/metrics.json", jsonpath: "$.sharpe"}
         tolerance: {kind: relative, value: 0.05}
     reference_outputs: []
 nine_step_coverage:
@@ -74,7 +74,21 @@ def test_adapter_maps_headlines_to_expected_metrics():
     assert len(er.metrics) == 1
     assert er.metrics[0].name == "sharpe_ratio"
     assert er.metrics[0].value == 0.85
-    assert er.metrics[0].locate.kind == "json_file"
+
+
+def test_adapter_synthesizes_results_json_locate_for_v1_metric():
+    """v2 headlines have no locator, but v1 ExpectedMetric still requires one.
+
+    The adapter synthesizes a json_file locate pointing at the SDK's
+    canonical results.json so the audit-trail ExtractedPlan stays
+    constructible.
+    """
+    m = load_manifest_from_yaml_text(_MIN)
+    p = to_extracted_plan(m)
+    metric = p.expected_results[0].metrics[0]
+    assert metric.locate.kind == "json_file"
+    assert metric.locate.path == ".plutus/run/in_sample/results.json"
+    assert metric.locate.jsonpath == "$.metrics[?(@.name=='sharpe_ratio')].value"
 
 
 def test_adapter_maps_nine_step_coverage_to_mapping():

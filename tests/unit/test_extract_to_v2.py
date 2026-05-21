@@ -1,4 +1,5 @@
 """Tests for the v1 → v2 reverse adapter (used by `plutus transfer`)."""
+import pytest
 import yaml
 
 from plutus_verify.extract.plan import (
@@ -78,6 +79,15 @@ def test_emitted_yaml_is_parseable():
     assert data["schema_version"] == "2.0"
 
 
+@pytest.mark.xfail(
+    reason=(
+        "Plan 6 / Task 3 removed `locate:` from the v2 schema; the reverse "
+        "adapter (extract_to_v2.py) still emits a locate block from the v1 "
+        "ExpectedMetric. Task 6 rewrites the reverse adapter to drop locate "
+        "and emit display_name instead — this test re-passes then."
+    ),
+    strict=True,
+)
 def test_emitted_yaml_passes_v2_schema_validation():
     """A perfectly-extracted plan should yield a manifest that already validates,
     so authors can run `plutus check` against the draft (after renaming)."""

@@ -6,8 +6,6 @@ No adapter to v1 plumbing. Mirrors the v1 pipeline shape but consumes
 """
 from __future__ import annotations
 
-import json
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -208,96 +206,28 @@ def _run_step(
     return sr
 
 
-_TABLE_ROW_RE = re.compile(r"^\s*\|(.+)\|\s*$")
-
-
 def _compare_headlines(
     er, repo_path: Path, step_results: dict[str, StepRuntimeResult]
 ) -> dict[str, "HeadlineResult"]:
     """Compare headlines for one expected block.
 
-    For locate.kind == "stdout_table", the relevant stdout is the captured
-    output of the step named by `er.step_id`.
+    Task 4 will rewrite this to read each headline value by name from
+    ``.plutus/run/<step_id>/results.json`` (written by the SDK in Task 1
+    and read back via :mod:`plutus_verify.spec.runtime.results` in Task 2).
+    For now this is a placeholder that records each headline as not-yet-
+    evaluated so the orchestrator still returns a structurally-complete
+    :class:`V2RuntimeResult`.
     """
-    stdout = ""
-    sr = step_results.get(er.step_id)
-    if sr is not None:
-        stdout = sr.stdout
     out: dict[str, HeadlineResult] = {}
     for h in er.headlines:
-        try:
-            actual = _locate_value(h.locate, repo_path, stdout=stdout)
-            ok, detail = _within_tolerance(actual, h.value, h.tolerance)
-            out[h.name] = HeadlineResult(name=h.name, ok=ok, actual=actual, expected=h.value, detail=detail)
-        except Exception as exc:  # noqa: BLE001
-            out[h.name] = HeadlineResult(
-                name=h.name, ok=False, actual=None, expected=h.value, detail=str(exc)
-            )
+        out[h.name] = HeadlineResult(
+            name=h.name,
+            ok=False,
+            actual=None,
+            expected=h.value,
+            detail="headline comparison pending Task 4 (results.json reader wiring)",
+        )
     return out
-
-
-def _locate_value(locate, repo_path: Path, *, stdout: str = "") -> Any:
-    if locate.kind == "json_file" and locate.path and locate.jsonpath:
-        from jsonpath_ng import parse as _parse_jsonpath
-
-        data = json.loads((repo_path / locate.path).read_text())
-        expr = _parse_jsonpath(locate.jsonpath)
-        matches = [m.value for m in expr.find(data)]
-        if not matches:
-            raise KeyError(f"no match for jsonpath {locate.jsonpath} in {locate.path}")
-        return matches[0]
-    if locate.kind == "stdout_table":
-        return _locate_stdout_table(locate, stdout)
-    if locate.kind == "stdout_regex":
-        return _locate_stdout_regex(locate, stdout)
-    raise NotImplementedError(
-        f"locate kind {locate.kind} not yet implemented; "
-        "supported: json_file, stdout_table, stdout_regex"
-    )
-
-
-def _locate_stdout_regex(locate, stdout: str) -> float:
-    """Apply `locate.pattern` to `stdout` and return the first capture group as float.
-
-    Designed for scripts that print plain-text metrics (e.g.
-    ``print(f"Sharpe ratio: {value}")``) — these match a pattern like
-    ``Sharpe ratio:\\s*([-\\d.]+)``.
-    """
-    if not locate.pattern:
-        raise ValueError("stdout_regex locate requires 'pattern'")
-    m = re.search(locate.pattern, stdout)
-    if m is None:
-        raise KeyError(f"pattern {locate.pattern!r} did not match captured stdout")
-    if not m.groups():
-        raise ValueError(f"pattern {locate.pattern!r} has no capture group")
-    raw = m.group(1)
-    try:
-        return float(raw)
-    except ValueError as exc:
-        raise ValueError(f"captured value {raw!r} is not numeric") from exc
-
-
-def _locate_stdout_table(locate, stdout: str) -> float:
-    """Find `locate.row` in a markdown table inside `stdout` and return `locate.col`."""
-    if locate.row is None or locate.col is None:
-        raise ValueError("stdout_table locate requires both 'row' and 'col'")
-    target = locate.row.strip().casefold()
-    for line in stdout.splitlines():
-        m = _TABLE_ROW_RE.match(line)
-        if not m:
-            continue
-        cells = [c.strip() for c in m.group(1).split("|")]
-        if cells[0].casefold().startswith(target):
-            if locate.col >= len(cells):
-                raise ValueError(f"col {locate.col} out of range for row '{locate.row}'")
-            raw = cells[locate.col]
-            try:
-                return float(raw)
-            except ValueError as exc:
-                raise ValueError(
-                    f"cell at row '{locate.row}' col {locate.col} not numeric: {raw!r}"
-                ) from exc
-    raise KeyError(f"row '{locate.row}' not found in stdout table")
 
 
 def _within_tolerance(actual: Any, expected: Any, tol) -> tuple[bool, str]:

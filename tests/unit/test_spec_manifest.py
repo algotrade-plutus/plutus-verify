@@ -5,7 +5,6 @@ from plutus_verify.spec.manifest import (
     Env,
     ExpectedBlock,
     Headline,
-    Locate,
     Manifest,
     NineStepCoverage,
     ReferenceOutput,
@@ -68,15 +67,27 @@ def test_data_source_satisfies_multiple_steps():
     assert ds.satisfies == ("data_collection", "data_processing")
 
 
-def test_headline_uses_locate_and_tolerance():
+def test_headline_uses_name_value_and_tolerance():
     h = Headline(
         name="sharpe_ratio",
         value=0.85,
-        locate=Locate(kind="json_file", path="out/m.json", jsonpath="$.sharpe"),
         tolerance=Tolerance(kind="relative", value=0.05),
     )
-    assert h.locate.kind == "json_file"
+    assert h.name == "sharpe_ratio"
+    assert h.value == 0.85
     assert h.tolerance.value == 0.05
+    # display_name defaults to None when omitted
+    assert h.display_name is None
+
+
+def test_headline_accepts_optional_display_name():
+    h = Headline(
+        name="sharpe_ratio",
+        value=0.85,
+        tolerance=Tolerance(kind="relative", value=0.05),
+        display_name="Sharpe Ratio",
+    )
+    assert h.display_name == "Sharpe Ratio"
 
 
 def test_reference_output_with_threshold():

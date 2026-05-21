@@ -19,7 +19,6 @@ from plutus_verify.spec.manifest import (
     Env,
     ExpectedBlock,
     Headline,
-    Locate,
     Manifest,
     NineStepCoverage,
     ReferenceOutput,
@@ -142,14 +141,7 @@ def _build_expected(d: dict[str, Any]) -> ExpectedBlock:
         Headline(
             name=h["name"],
             value=h["value"],
-            locate=Locate(
-                kind=h["locate"]["kind"],
-                path=h["locate"].get("path"),
-                row=h["locate"].get("row"),
-                col=h["locate"].get("col"),
-                jsonpath=h["locate"].get("jsonpath"),
-                pattern=h["locate"].get("pattern"),
-            ),
+            display_name=h.get("display_name"),
             tolerance=Tolerance(
                 kind=h["tolerance"]["kind"], value=h["tolerance"]["value"]
             ),

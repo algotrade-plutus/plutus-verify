@@ -63,16 +63,6 @@ class Step:
 
 
 @dataclass(frozen=True)
-class Locate:
-    kind: Literal["stdout_table", "stdout_regex", "json_file", "file_regex"]
-    path: Optional[str] = None
-    row: Optional[str] = None
-    col: Optional[int] = None
-    jsonpath: Optional[str] = None
-    pattern: Optional[str] = None
-
-
-@dataclass(frozen=True)
 class Tolerance:
     kind: Literal["relative", "absolute", "exact"]
     value: float
@@ -81,9 +71,9 @@ class Tolerance:
 @dataclass(frozen=True)
 class Headline:
     name: str
-    value: "float | str"
-    locate: Locate
+    value: float
     tolerance: Tolerance
+    display_name: Optional[str] = None
 
 
 @dataclass(frozen=True)

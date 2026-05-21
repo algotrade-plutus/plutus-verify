@@ -9,20 +9,6 @@ from typing import Any
 
 from plutus_verify.spec.manifest import NINE_STEP_KEYS
 
-_LOCATE = {
-    "type": "object",
-    "required": ["kind"],
-    "properties": {
-        "kind": {"type": "string", "enum": ["stdout_table", "stdout_regex", "json_file", "file_regex"]},
-        "path": {"type": ["string", "null"]},
-        "row": {"type": ["string", "null"]},
-        "col": {"type": ["integer", "null"]},
-        "jsonpath": {"type": ["string", "null"]},
-        "pattern": {"type": ["string", "null"]},
-    },
-    "additionalProperties": False,
-}
-
 _TOLERANCE = {
     "type": "object",
     "required": ["kind", "value"],
@@ -35,14 +21,14 @@ _TOLERANCE = {
 
 _HEADLINE = {
     "type": "object",
-    "required": ["name", "value", "locate", "tolerance"],
+    "required": ["name", "value", "tolerance"],
+    "additionalProperties": False,
     "properties": {
-        "name": {"type": "string"},
-        "value": {"type": ["number", "string"]},
-        "locate": _LOCATE,
+        "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "display_name": {"type": "string"},
+        "value": {"type": "number"},
         "tolerance": _TOLERANCE,
     },
-    "additionalProperties": False,
 }
 
 _REFERENCE_OUTPUT = {
