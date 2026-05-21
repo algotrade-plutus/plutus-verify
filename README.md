@@ -134,3 +134,35 @@ verifier's "E2E" tier — run it nightly, not as a regression gate.
 | M3 — Numeric comparison + report | ✅ done | all three locate kinds + tolerance + exit codes |
 | M4 — Chart visual judgment | ✅ scaffolded | OpenAI-compat vision client wired in |
 | M5 — Batch mode + CI polish | ◐ partial | `--batch` works; GitHub Action wrapper TBD |
+
+## v2 manifest (preview)
+
+Repos that ship a `.plutus/manifest.yaml` skip LLM extraction entirely — the
+manifest IS the plan. See
+[`docs/plan/2026-05-20-plutus-spec-v2-foundation.md`](docs/plan/2026-05-20-plutus-spec-v2-foundation.md)
+for the foundation work.
+
+A minimal manifest looks like:
+
+```yaml
+schema_version: "2.0"
+repo: {name: Demo, primary_language: python}
+env:
+  base: python
+  python_version: "3.11"
+  requirements_file: requirements.txt
+secrets: []
+data_sources: {processed: [], raw: []}
+steps:
+  - id: in_sample
+    nine_step: step_4_in_sample
+    required: true
+    command: "python -m demo.backtest"
+    outputs: ["out/metrics.json"]
+expected: []
+nine_step_coverage: {}
+```
+
+Authoring tools (`plutus init`, `plutus check`, `plutus snapshot`) land in Plan 3.
+Native v2 execution (input/output pre-flight, data-tier resolver, full
+reference-output comparator) lands in Plan 2.
