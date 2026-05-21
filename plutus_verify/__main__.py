@@ -440,6 +440,36 @@ def snapshot_cmd(repo_path: Path, no_run: bool) -> None:
 
 
 # ---------------------------------------------------------------------------
+# transfer subcommand
+# ---------------------------------------------------------------------------
+
+@cli.command("transfer")
+@click.argument("repo_path", type=click.Path(path_type=Path, file_okay=False), default=".")
+@click.option(
+    "--llm-endpoint",
+    default="http://localhost:11434/v1",
+    help="OpenAI-compatible endpoint for the LLM extractor",
+    show_default=True,
+)
+@click.option("--llm-model", default="gemma4:26b", show_default=True)
+def transfer_cmd(repo_path: Path, llm_endpoint: str, llm_model: str) -> None:
+    """Convert a legacy README-based repo into a v2 draft manifest."""
+    from plutus_verify.scaffold.transfer import TransferError, scaffold_transfer
+
+    llm = OpenAICompatClient(endpoint=llm_endpoint, model=llm_model)
+    try:
+        res = scaffold_transfer(Path(repo_path), llm_client=llm)
+    except TransferError as exc:
+        click.echo(f"error: {exc}", err=True)
+        ctx = click.get_current_context()
+        ctx.exit(2)
+        return
+    click.echo(f"wrote draft: {res.draft_path}")
+    click.echo(res.plan_summary)
+    click.echo("Next: review the TODO markers, then `mv .plutus/manifest.yaml.draft .plutus/manifest.yaml`")
+
+
+# ---------------------------------------------------------------------------
 # Backward-compatible entrypoint
 # ---------------------------------------------------------------------------
 
@@ -447,7 +477,7 @@ def main() -> None:
     """Backward-compatible bare entrypoint: ``plutus-verify <git_url>`` → ``plutus verify <git_url>``."""
     args = sys.argv[1:]
     # If first arg looks like a known subcommand, pass through; else inject 'verify'
-    known = {"init", "check", "snapshot", "verify", "--help", "-h", "--version"}
+    known = {"init", "check", "snapshot", "transfer", "verify", "--help", "-h", "--version"}
     if args and args[0] not in known and not args[0].startswith("-"):
         args = ["verify"] + args
     cli(args=args, prog_name="plutus-verify", standalone_mode=True)
