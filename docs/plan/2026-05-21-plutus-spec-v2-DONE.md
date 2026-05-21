@@ -1,6 +1,7 @@
-# Plutus v2 spec — Plans 1-4 complete
+# Plutus v2 spec — Plans 1-6 complete
 
-Four plans landed the v2 manifest format:
+Six plans landed the v2 manifest format and got it running against a real
+Plutus repo:
 
 - **Plan 1** — foundation: `plutus_verify/spec/` (dataclasses, schema, loader,
   validator, adapter), pipeline branch on `.plutus/manifest.yaml`.
@@ -11,6 +12,21 @@ Four plans landed the v2 manifest format:
   templates + commands), Click group restructure of `__main__.py`.
 - **Plan 4** — legacy transfer: `plutus transfer` repurposes the LLM extractor
   to emit a draft v2 manifest for hand-cleaning.
+- **Plan 5** — [live verification gap closure](2026-05-21-plutus-spec-v2-live-verification.md):
+  real Docker image builder, locator gap fixes, `artifact_check` mode,
+  `repo_path.resolve()`, data-resolver common-parent-dir, transfer prewarm +
+  per-call progress. Surfaced and fixed by the first end-to-end run against
+  ProtoMarketMaker (retrospective plan). The locator vocabulary it added
+  (`stdout_regex`, `stdout_table`) was subsequently deleted in Plan 6.
+- **Plan 6** — [results.json contract](2026-05-21-plutus-spec-v2-results-contract.md):
+  inverted the comparison model. Scripts now emit
+  `.plutus/run/<step_id>/results.json` (SDK or hand-rolled JSON); the verifier
+  reads it and looks up metrics by snake_case name. `Locate` was deleted from
+  the manifest model. Task 7 re-verified the contract end-to-end against
+  ProtoMarketMaker — pass pattern matches Plan 5 baseline (6/6 in-sample,
+  3/6 OOS; OOS divergence is an upstream reproducibility finding, not a
+  pipeline regression). Golden manifest + results.json live under
+  `out/transfer-test/ProtoMarketMaker/` (gitignored working copy).
 
 ## End-state architecture
 
@@ -23,11 +39,8 @@ plutus transfer <repo_path>      # legacy README → draft v2 manifest
 plutus verify <git_url>          # explicit equivalent of bare `plutus-verify <git_url>`
 ```
 
-## Still deferred (not in any of these 4 plans)
+## Still deferred (not in any of these 6 plans)
 
-- Real Docker `image_builder` wired to `plutus check` (today raises
-  `NotImplementedError`; you must call `scaffold_check` programmatically with a
-  custom builder for CI runs).
 - Deletion of v1 `extract/plan.py` — the transfer tool depends on it; full
   schema retirement is a follow-up cleanup.
 - The legacy "no manifest" pipeline branch in `pipeline.py` — still routes
@@ -35,5 +48,7 @@ plutus verify <git_url>          # explicit equivalent of bare `plutus-verify <g
 - GPU support (`env.gpu_required`, `env.base=python-cuda`).
 - S3 downloader in the data-tier resolver.
 - `plutus render-readme` (generate README from manifest).
-- `plutus_verify` SDK for in-code instrumentation (`pv.headline(...)`,
-  `pv.export_manifest()`).
+- SDK install path inside the generated Docker image — today author scripts
+  must either hand-roll the `results.json` write or `pip install plutus_verify`
+  via `requirements.txt`. A first-class "include SDK in image" knob is a
+  follow-up.
