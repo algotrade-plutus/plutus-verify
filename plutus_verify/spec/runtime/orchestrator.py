@@ -18,6 +18,10 @@ from plutus_verify.spec.runtime.data_resolver import (
     resolve_data_tiers,
 )
 from plutus_verify.spec.runtime.dockerfile_gen import generate_dockerfile
+from plutus_verify.spec.runtime.sdk_bundle import (
+    SdkBundleError,
+    ensure_plutus_wheel,
+)
 from plutus_verify.spec.runtime.preflight import (
     PreflightError,
     assert_inputs_present,
@@ -83,7 +87,30 @@ def run_v2_pipeline(
     # Docker mounts and build contexts require absolute paths; the relative
     # paths users typically pass on the CLI break `-v` and `docker build`.
     repo_path = repo_path.resolve()
-    dockerfile = generate_dockerfile(manifest.env, secrets=manifest.secrets)
+
+    # Stage the SDK wheel into the Docker build context so the generated image
+    # can `import plutus_verify`. Surfaced gracefully if it fails — author
+    # scripts that hand-roll the results.json JSON keep working even without
+    # the SDK in the image.
+    sdk_wheel_basename: Optional[str] = None
+    _sdk_bundle_error: Optional[str] = None
+    try:
+        build_ctx = repo_path / ".plutus" / "build"
+        wheel = ensure_plutus_wheel(build_ctx)
+        sdk_wheel_basename = wheel.name
+    except SdkBundleError as exc:
+        # Don't crash the pipeline if the SDK wheel can't be built. The
+        # author's scripts may not use the SDK at all (Task 7 path), in which
+        # case the image just doesn't carry it. Surface the reason in
+        # result.notes for debugging.
+        sdk_wheel_basename = None
+        _sdk_bundle_error = str(exc)
+
+    dockerfile = generate_dockerfile(
+        manifest.env,
+        secrets=manifest.secrets,
+        sdk_wheel_basename=sdk_wheel_basename,
+    )
     image = image_builder(dockerfile, repo_path)
 
     tier = resolve_data_tiers(
@@ -95,6 +122,10 @@ def run_v2_pipeline(
 
     result = V2RuntimeResult(image=image, data_tier_used=tier.tier_used)
     result.notes.extend(tier.notes)
+    if _sdk_bundle_error is not None:
+        result.notes.append(f"SDK wheel not staged: {_sdk_bundle_error}")
+    elif sdk_wheel_basename is not None:
+        result.notes.append(f"SDK wheel staged: {sdk_wheel_basename}")
 
     expected_root = expected_dir or (repo_path / ".plutus" / "expected")
 

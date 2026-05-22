@@ -13,7 +13,12 @@ class UnsupportedEnvError(NotImplementedError):
     """Raised when an Env asks for capability not yet implemented."""
 
 
-def generate_dockerfile(env: Env, *, secrets: tuple[Secret, ...] = ()) -> str:
+def generate_dockerfile(
+    env: Env,
+    *,
+    secrets: tuple[Secret, ...] = (),
+    sdk_wheel_basename: str | None = None,
+) -> str:
     if env.gpu_required:
         raise UnsupportedEnvError(
             "GPU support not implemented in Plan 2 — deferred to Plan 2.5"
@@ -45,6 +50,17 @@ def generate_dockerfile(env: Env, *, secrets: tuple[Secret, ...] = ()) -> str:
             [
                 f"COPY {env.requirements_file} .",
                 f"RUN pip install --no-cache-dir -r {env.requirements_file}",
+            ]
+        )
+    if sdk_wheel_basename:
+        # Stage the verifier SDK so author scripts can `import plutus_verify`
+        # without touching their own requirements.txt. The wheel is placed in
+        # the build context at .plutus/build/<basename> by the orchestrator
+        # before `docker build` is invoked.
+        lines.extend(
+            [
+                f"COPY .plutus/build/{sdk_wheel_basename} /tmp/{sdk_wheel_basename}",
+                f"RUN pip install --no-cache-dir /tmp/{sdk_wheel_basename}",
             ]
         )
     lines.extend(

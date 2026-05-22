@@ -6,7 +6,29 @@ import pytest
 
 from plutus_verify.sdk import step as pv_step
 from plutus_verify.spec.loader import load_manifest_from_yaml_text
+from plutus_verify.spec.runtime import orchestrator as orch_mod
 from plutus_verify.spec.runtime.orchestrator import V2RuntimeResult, run_v2_pipeline
+from plutus_verify.spec.runtime.sdk_bundle import SdkBundleError
+
+
+@pytest.fixture(autouse=True)
+def _fake_sdk_wheel(monkeypatch, tmp_path):
+    """Default fake for `ensure_plutus_wheel`: writes a marker wheel file and
+    returns its path. Keeps tests fast (no real `python -m build`) and
+    deterministic regardless of whether plutus-verify is installed editable.
+
+    Tests that want to exercise the SdkBundleError path can override by
+    monkeypatching `orch_mod.ensure_plutus_wheel` themselves.
+    """
+    def fake(build_ctx: Path) -> Path:
+        build_ctx = Path(build_ctx)
+        build_ctx.mkdir(parents=True, exist_ok=True)
+        wheel = build_ctx / "plutus_verify-0.2.0-py3-none-any.whl"
+        if not wheel.exists():
+            wheel.write_bytes(b"fake-wheel")
+        return wheel
+
+    monkeypatch.setattr(orch_mod, "ensure_plutus_wheel", fake)
 
 
 _YAML = """\
@@ -420,3 +442,113 @@ def test_absolute_tolerance_fail_outside_bounds(tmp_path):
     hr = result.headline_results["in_sample"]["max_drawdown"]
     assert hr.ok is False
     assert hr.actual == -0.25
+
+
+# --- Plan 7 / Task 3: SDK wheel staging in orchestrator ---
+
+
+def test_run_v2_pipeline_stages_sdk_wheel_and_passes_basename_to_dockerfile_gen(
+    tmp_path, monkeypatch
+):
+    """The orchestrator stages the wheel via ensure_plutus_wheel and the
+    resulting basename appears in the dockerfile_text passed to image_builder."""
+    _stage_repo(tmp_path)
+    manifest = load_manifest_from_yaml_text(_YAML)
+
+    marker_basename = "plutus_verify-9.9.9-py3-none-any.whl"
+
+    def fake_ensure(build_ctx: Path) -> Path:
+        build_ctx = Path(build_ctx)
+        build_ctx.mkdir(parents=True, exist_ok=True)
+        wheel = build_ctx / marker_basename
+        wheel.write_bytes(b"marker")
+        return wheel
+
+    monkeypatch.setattr(orch_mod, "ensure_plutus_wheel", fake_ensure)
+
+    captured = {}
+
+    def fake_builder(dockerfile_text: str, repo_path: Path) -> str:
+        captured["dockerfile"] = dockerfile_text
+        captured["repo_path"] = repo_path
+        return "img"
+
+    runner = MagicMock()
+    runner.run.return_value = MagicMock(
+        exit_code=0, stdout="", stderr="", duration_seconds=0.1
+    )
+
+    with pv_step("in_sample", repo_path=tmp_path) as r:
+        r.headline("sharpe", 0.86, unit="ratio")
+
+    result = run_v2_pipeline(
+        manifest,
+        repo_path=tmp_path,
+        image_builder=fake_builder,
+        runner=runner,
+        vision_client=None,
+        secrets={},
+    )
+
+    df = captured["dockerfile"]
+    assert f"COPY .plutus/build/{marker_basename} /tmp/{marker_basename}" in df
+    assert f"RUN pip install --no-cache-dir /tmp/{marker_basename}" in df
+
+    # The wheel file was actually staged on disk inside the repo build ctx
+    staged = tmp_path / ".plutus" / "build" / marker_basename
+    assert staged.is_file()
+
+    # Notes reflect the success path
+    assert any(
+        "SDK wheel staged" in note and marker_basename in note
+        for note in result.notes
+    )
+
+
+def test_run_v2_pipeline_handles_sdk_bundle_error_gracefully(
+    tmp_path, monkeypatch
+):
+    """If ensure_plutus_wheel raises SdkBundleError, the pipeline still runs,
+    the dockerfile has no .plutus/build/ reference, and notes surface the
+    reason."""
+    _stage_repo(tmp_path)
+    manifest = load_manifest_from_yaml_text(_YAML)
+
+    def boom(build_ctx: Path) -> Path:
+        raise SdkBundleError("test reason")
+
+    monkeypatch.setattr(orch_mod, "ensure_plutus_wheel", boom)
+
+    captured = {}
+
+    def fake_builder(dockerfile_text: str, repo_path: Path) -> str:
+        captured["dockerfile"] = dockerfile_text
+        return "img"
+
+    runner = MagicMock()
+    runner.run.return_value = MagicMock(
+        exit_code=0, stdout="", stderr="", duration_seconds=0.1
+    )
+
+    with pv_step("in_sample", repo_path=tmp_path) as r:
+        r.headline("sharpe", 0.86, unit="ratio")
+
+    result = run_v2_pipeline(
+        manifest,
+        repo_path=tmp_path,
+        image_builder=fake_builder,
+        runner=runner,
+        vision_client=None,
+        secrets={},
+    )
+
+    assert isinstance(result, V2RuntimeResult)
+    df = captured["dockerfile"]
+    assert ".plutus/build/" not in df
+
+    matched = [
+        note
+        for note in result.notes
+        if "SDK wheel not staged" in note and "test reason" in note
+    ]
+    assert matched, f"Expected SDK error note, got: {result.notes}"
