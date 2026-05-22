@@ -20,6 +20,10 @@ from plutus_verify.spec.runtime.results import (
     ResultsFile,
     load_results,
 )
+from plutus_verify.spec.runtime.sdk_bundle import (
+    SdkBundleError,
+    ensure_plutus_wheel,
+)
 
 __all__ = [
     "Artifact",
@@ -31,9 +35,11 @@ __all__ = [
     "MissingResultsError",
     "ResultsError",
     "ResultsFile",
+    "SdkBundleError",
     "StepRuntimeResult",
     "V2RuntimeResult",
     "build_image",
+    "ensure_plutus_wheel",
     "load_results",
     "make_image_builder",
     "run_v2_pipeline",

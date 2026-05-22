@@ -32,7 +32,7 @@ dependencies = [
 
 [project.optional-dependencies]
 llm = ["openai>=1.40"]
-runner = ["docker>=7.0", "jupyter-repo2docker>=2024.3"]
+runner = ["docker>=7.0", "jupyter-repo2docker>=2024.3", "build>=1.0"]
 charts = ["cairosvg>=2.7", "pillow>=10.0"]
 dev = ["pytest>=8.0", "pytest-cov>=4.1"]
 
