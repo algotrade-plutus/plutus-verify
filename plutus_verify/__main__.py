@@ -594,13 +594,13 @@ def bootstrap_cmd(repo_path: Path, force: bool) -> None:
         ctx.exit(3)
         return
     repo_root = Path(repo_path).resolve()
+    draft_rel = result.draft_path.resolve().relative_to(repo_root)
+    todo_rel = result.todo_path.resolve().relative_to(repo_root)
     click.echo(
-        f"draft:    {result.draft_path.relative_to(repo_root)}  "
+        f"draft:    {draft_rel}  "
         f"({result.steps_with_metrics} steps, {result.metrics_total} metrics)"
     )
-    click.echo(
-        f"guidance: {result.todo_path.relative_to(repo_root)}"
-    )
+    click.echo(f"guidance: {todo_rel}")
     for note in result.notes:
         click.echo(f"  {note}")
     click.echo("")
