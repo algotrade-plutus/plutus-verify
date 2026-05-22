@@ -423,8 +423,25 @@ def check_cmd(repo_path: Path, secrets_from_env: bool, data_tier: str) -> None:
 @cli.command("snapshot")
 @click.argument("repo_path", type=click.Path(path_type=Path, file_okay=False), default=".")
 @click.option("--no-run", is_flag=True, help="don't run check first; snapshot existing outputs")
-def snapshot_cmd(repo_path: Path, no_run: bool) -> None:
-    """Capture step outputs into .plutus/expected/."""
+@click.option(
+    "--no-reference-outputs",
+    is_flag=True,
+    default=False,
+    help="Don't copy step output files into .plutus/expected/.",
+)
+@click.option(
+    "--no-headlines",
+    is_flag=True,
+    default=False,
+    help="Don't write expected.headlines[].value into manifest.yaml.",
+)
+def snapshot_cmd(
+    repo_path: Path,
+    no_run: bool,
+    no_reference_outputs: bool,
+    no_headlines: bool,
+) -> None:
+    """Capture step outputs into .plutus/expected/ and fill headline values."""
     from plutus_verify.scaffold.snapshot import scaffold_snapshot
 
     if not no_run:
@@ -436,8 +453,14 @@ def snapshot_cmd(repo_path: Path, no_run: bool) -> None:
         ctx.exit(3)
         return
 
-    res = scaffold_snapshot(Path(repo_path), run_check_first=False)
-    click.echo(f"copied {res.files_copied} file(s) to .plutus/expected/")
+    res = scaffold_snapshot(
+        Path(repo_path),
+        run_check_first=False,
+        update_reference_outputs=not no_reference_outputs,
+        update_headline_values=not no_headlines,
+    )
+    click.echo(f"  files copied: {res.files_copied}")
+    click.echo(f"  headlines updated: {res.headlines_updated}")
     for n in res.notes:
         click.echo(f"  {n}")
 
