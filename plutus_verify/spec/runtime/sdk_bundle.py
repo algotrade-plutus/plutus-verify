@@ -129,17 +129,20 @@ def _locate_source(dist) -> Path:
             "editable install or a PyPI release (not yet supported here)"
         )
 
-    # Fallback: distribution metadata may live in a *.egg-info dir that sits
-    # right next to the source tree (legacy editable layout).
-    dist_path = getattr(dist, "_path", None)
-    if dist_path is not None:
-        candidate = Path(dist_path).resolve().parent
-        if (candidate / "pyproject.toml").is_file():
-            return candidate
+    # Fallback for editable installs that didn't produce direct_url.json
+    # (e.g. setuptools' default .egg-info layout): locate the source via the
+    # imported package's __file__, then walk up to the directory containing
+    # pyproject.toml. Public API; no private attributes.
+    import plutus_verify
+
+    mod_dir = Path(plutus_verify.__file__).resolve().parent
+    candidate = mod_dir.parent
+    if (candidate / "pyproject.toml").is_file():
+        return candidate
 
     raise SdkBundleError(
         f"could not locate {_PACKAGE} source on disk: no PEP 610 "
-        "direct_url.json and no usable egg-info fallback"
+        "direct_url.json and no pyproject.toml next to plutus_verify package"
     )
 
 
