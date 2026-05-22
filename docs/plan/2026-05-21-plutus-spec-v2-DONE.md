@@ -1,6 +1,6 @@
-# Plutus v2 spec — Plans 1-8 complete
+# Plutus v2 spec — Plans 1-9 complete
 
-Eight plans landed the v2 manifest format and got it running against a real
+Nine plans landed the v2 manifest format and got it running against a real
 Plutus repo:
 
 - **Plan 1** — foundation: `plutus_verify/spec/` (dataclasses, schema, loader,
@@ -45,6 +45,19 @@ Plutus repo:
   ProtoMarketMaker (corrupted sharpe_ratio to 999.0/-42.0 → snapshot
   restored both to the real script values; diff contains only the 12 value
   changes, all other bytes identical).
+- **Plan 9** — [plutus bootstrap](2026-05-22-plutus-bootstrap.md):
+  `plutus bootstrap` reads `.plutus/run/<step_id>/results.json` files and
+  the filesystem (`.python-version`, `pyproject.toml`, `requirements.txt`),
+  emits a ~70%-filled `manifest.yaml.draft` plus a companion
+  `manifest_TODO.md` with author-facing guidance for the ~8 fields that
+  require domain knowledge (env.os_packages, secrets, data_sources,
+  steps[].command/nine_step/inputs/depends_on, nine_step_coverage). Closes
+  the new-repo author flow: write code → instrument with `pv.step(...)` →
+  run → `plutus bootstrap` → fill TODO_* markers (grep-able) → `plutus
+  check` → commit. Integration-verified against ProtoMarketMaker — draft
+  regenerated from the sandbox's results.json contains both expected blocks
+  with all 12 metrics auto-filled + snake_case → display_name conversions
+  applied; guidance doc is 302 lines walking the author through each TODO.
 
 ## End-state architecture
 
@@ -57,7 +70,7 @@ plutus transfer <repo_path>      # legacy README → draft v2 manifest
 plutus verify <git_url>          # explicit equivalent of bare `plutus-verify <git_url>`
 ```
 
-## Still deferred (not in any of these 8 plans)
+## Still deferred (not in any of these 9 plans)
 
 - Deletion of v1 `extract/plan.py` — the transfer tool depends on it; full
   schema retirement is a follow-up cleanup.
