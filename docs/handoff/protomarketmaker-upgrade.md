@@ -11,33 +11,41 @@ documents its reproducibility claims in `README.md` prose. You will land the
 machine-readable `plutus-verify` v2 contract on it so the strategy can be
 reproducibility-verified by anyone with Docker, without reading the README.
 
+**This briefing exercises the "new repo" author flow end-to-end** — instrument
+the scripts, run them once locally, let `plutus bootstrap` generate the
+manifest draft from the run artifacts, fill in the ~8 TODOs by hand, then
+verify with `plutus check`. That's the canonical workflow built across plans
+1–9; this is its first real-world exercise outside the verifier's own sandbox.
+
 ## Where things live
 
 | Thing | Path |
 |---|---|
 | The verifier (`plutus-verify` package, v0.2.0) | `/Users/dan/algotrade-research/plutus-automation-scoring` |
 | The repo you'll modify | the upstream `ProtoMarketMaker` clone (user provides path) |
-| A working reference of the end-state | `/Users/dan/algotrade-research/plutus-automation-scoring/out/transfer-test/ProtoMarketMaker/` (gitignored sandbox copy with all the work already applied — use as ground truth) |
+| A working reference of the end-state | `/Users/dan/algotrade-research/plutus-automation-scoring/out/transfer-test/ProtoMarketMaker/.plutus/manifest.yaml` (gitignored sandbox copy with all TODOs already filled — use as ground-truth when in doubt) |
 
 If the user hasn't told you the upstream clone path, ask. Don't assume.
 
-## Background you need (~60 seconds)
+## Background you need (~90 seconds)
 
 The plutus-verify v2 model:
 
 1. **Manifest** at `.plutus/manifest.yaml` declares env, secrets, data sources, steps, expected metrics with tolerances. Author-written, source-of-truth for verification.
 2. **Scripts emit `.plutus/run/<step_id>/results.json`** via `import plutus_verify as pv` + `with pv.step("...") as r: r.metric(name, value, unit="ratio")`. The SDK validates the schema and writes the file atomically on clean exit.
-3. **`plutus check <repo>`** builds a Docker image from the manifest env, runs each step, reads each step's `results.json`, compares metrics by name against `expected.metrics` within tolerance. Exit 0 if all match, 1 if any drift, 2 on infrastructure failure.
-4. **The Dockerfile auto-injects `plutus-verify`** so scripts can `import plutus_verify` without touching `requirements.txt`.
-5. **`plutus snapshot --no-run`** reads existing `results.json` and writes values into the manifest's `expected.metrics[].value` slots — ruamel.yaml round-trip, comments preserved. Author reviews the diff and commits; the git commit IS the verification claim.
+3. **`plutus bootstrap`** reads `.plutus/run/<step_id>/results.json` files + the filesystem (`.python-version`, `pyproject.toml`, `requirements.txt`) and emits `.plutus/manifest.yaml.draft` (~70% complete) plus `.plutus/manifest_TODO.md` (author-facing guidance for the ~8 remaining unknowable fields).
+4. **`plutus check <repo>`** builds a Docker image from the manifest env, runs each step, reads each step's `results.json`, compares metrics by name against `expected.metrics` within tolerance. Exit 0 if all match, 1 if any drift, 2 on infrastructure failure.
+5. **The Dockerfile auto-injects `plutus-verify`** so scripts can `import plutus_verify` without touching `requirements.txt`.
+6. **`plutus snapshot --no-run`** reads existing `results.json` and writes values into the manifest's `expected.metrics[].value` slots — ruamel.yaml round-trip, comments preserved. Author reviews the diff and commits; the git commit IS the verification claim.
 
-The full design history is in `/Users/dan/algotrade-research/plutus-automation-scoring/docs/plan/` (eight plans, all complete).
+The full design history is in `/Users/dan/algotrade-research/plutus-automation-scoring/docs/plan/` (nine plans, all complete).
 
 ## Prerequisites on the host
 
 - Python 3.11+
 - Local Docker daemon running (`docker info` should succeed)
 - Access to the verifier source at `/Users/dan/algotrade-research/plutus-automation-scoring`
+- ProtoMarketMaker's data accessible (you'll need to run `python data_loader.py` or place the four `VN30F1M_data.csv` / `VN30F2M_data.csv` files under `data/is/` and `data/os/` so the scripts can run locally for the initial bootstrap)
 
 ## Step 0 — Confirm scope with the user
 
@@ -46,8 +54,9 @@ Before touching anything:
 1. Ask the user for the upstream `ProtoMarketMaker` path if not in this doc.
 2. Confirm they want this work committed directly to a branch in that repo (and which branch — likely `feat/plutus-verify-integration` or similar).
 3. Confirm whether they want a PR opened at the end or just commits on a branch.
+4. Confirm they have (or can produce) the input data files locally — either via running `data_loader.py` (needs DB creds) or via downloading from the Google Drive folder at `https://drive.google.com/drive/folders/181d7JcfHilIvviLgEuaDt2VqwZLYnYUF`.
 
-## Step 1 — Install plutus-verify into a venv used by the repo
+## Step 1 — Install plutus-verify into a host venv
 
 In the upstream ProtoMarketMaker clone:
 
@@ -62,203 +71,18 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 # Install the verifier from local source (editable install).
-# IMPORTANT: this is the verifier, not a dep of ProtoMarketMaker's runtime —
-# you only need it on the host for `plutus check`. The Docker image installs
-# its own copy via Plan 7's auto-injection.
+# IMPORTANT: this is for HOST-side `plutus check` and `plutus bootstrap`.
+# The Docker image installs its own copy via the verifier's auto-injection
+# (Plan 7) so author scripts can `import plutus_verify` inside the container.
 pip install -e /Users/dan/algotrade-research/plutus-automation-scoring
 
-# Sanity-check
+# Sanity-check — should list init/check/snapshot/transfer/bootstrap/verify
 plutus --help
 ```
 
-If `plutus --help` doesn't show the subcommand list (`init`, `check`, `snapshot`, `transfer`, `verify`), stop and fix the install. Likely Python version mismatch (3.11+ required).
+If `plutus --help` doesn't show `bootstrap` in the subcommand list, stop and fix the install (most likely Python version mismatch — 3.11+ required).
 
-## Step 2 — Create the `.plutus/` directory and the manifest
-
-```bash
-mkdir -p .plutus
-```
-
-Write `.plutus/manifest.yaml` with this exact content (lifted from the verified sandbox copy at `/Users/dan/algotrade-research/plutus-automation-scoring/out/transfer-test/ProtoMarketMaker/.plutus/manifest.yaml`):
-
-```yaml
-# Plutus v2 manifest for PROTO:Market Maker.
-# Notes:
-# - ExpectedMetrics are matched against metrics produced into
-#   .plutus/run/<step_id>/results.json by the instrumented scripts
-#   (backtesting.py, evaluation.py).
-# - The optimization step is artifact_check — the shipped optimized_parameter.json
-#   (seed=2025) is the verification artifact; no need to re-run optuna.
-schema_version: "2.0"
-
-repo:
-  name: PROTO:Market Maker
-  primary_language: python
-
-env:
-  base: python
-  python_version: "3.11"
-  requirements_file: requirements.txt
-
-secrets:
-  - key: DB_NAME
-    purpose: Algotrade database name
-    used_by: [data_collection]
-  - key: DB_USER
-    purpose: Algotrade database user
-    used_by: [data_collection]
-  - key: DB_PASSWORD
-    purpose: Algotrade database password
-    used_by: [data_collection]
-  - key: DB_HOST
-    purpose: Algotrade database host
-    used_by: [data_collection]
-  - key: DB_PORT
-    purpose: Algotrade database port
-    used_by: [data_collection]
-
-data_sources:
-  processed: []
-  raw:
-    - kind: google_drive
-      url: https://drive.google.com/drive/folders/181d7JcfHilIvviLgEuaDt2VqwZLYnYUF
-      expected_layout:
-        - data/is/VN30F1M_data.csv
-        - data/is/VN30F2M_data.csv
-        - data/os/VN30F1M_data.csv
-        - data/os/VN30F2M_data.csv
-      satisfies: [data_collection]
-
-steps:
-  - id: data_collection
-    nine_step: step_2_data_collection
-    required: true
-    network: bridge
-    timeout_seconds: 1800
-    command: "python data_loader.py"
-    inputs: []
-    outputs:
-      - data/is/VN30F1M_data.csv
-      - data/is/VN30F2M_data.csv
-      - data/os/VN30F1M_data.csv
-      - data/os/VN30F2M_data.csv
-
-  - id: in_sample_backtest
-    nine_step: step_4_in_sample
-    required: true
-    network: none
-    timeout_seconds: 1800
-    command: "python backtesting.py"
-    inputs:
-      - data/is/VN30F1M_data.csv
-      - data/is/VN30F2M_data.csv
-      - parameter/backtesting_parameter.json
-    outputs:
-      - result/backtest/hpr.svg
-      - result/backtest/drawdown.svg
-      - result/backtest/inventory.svg
-    depends_on: [data_collection]
-
-  - id: optimization
-    nine_step: step_5_optimization
-    required: true
-    network: none
-    timeout_seconds: 1800
-    verification_mode: artifact_check
-    inputs:
-      - parameter/optimization_parameter.json
-    outputs:
-      - parameter/optimized_parameter.json
-    depends_on: [data_collection]
-
-  - id: out_of_sample_backtest
-    nine_step: step_6_out_of_sample
-    required: true
-    network: none
-    timeout_seconds: 1800
-    command: "python evaluation.py"
-    inputs:
-      - data/os/VN30F1M_data.csv
-      - data/os/VN30F2M_data.csv
-      - parameter/optimized_parameter.json
-      - parameter/backtesting_parameter.json
-    outputs:
-      - result/optimization/hpr.svg
-      - result/optimization/drawdown.svg
-      - result/optimization/inventory.svg
-    depends_on: [optimization]
-
-expected:
-  - step_id: in_sample_backtest
-    metrics:
-      - name: sharpe_ratio
-        display_name: "Sharpe Ratio"
-        value: 0.9516
-        tolerance: {kind: relative, value: 0.05}
-      - name: sortino_ratio
-        display_name: "Sortino Ratio"
-        value: 1.3490
-        tolerance: {kind: relative, value: 0.05}
-      - name: maximum_drawdown
-        display_name: "Maximum Drawdown"
-        value: -0.2010
-        tolerance: {kind: absolute, value: 0.02}
-      # HPR/return values: script prints ratios (e.g. 0.299), README documents
-      # percent (e.g. 29.92). Manifest mirrors the script — these are ratios.
-      - name: hpr
-        display_name: "HPR"
-        value: 0.2992
-        tolerance: {kind: relative, value: 0.05}
-      - name: monthly_return
-        display_name: "Monthly return"
-        value: 0.0181
-        tolerance: {kind: relative, value: 0.05}
-      - name: annual_return
-        display_name: "Annual return"
-        value: 0.1710
-        tolerance: {kind: relative, value: 0.05}
-    reference_outputs: []
-  - step_id: out_of_sample_backtest
-    metrics:
-      - name: sharpe_ratio
-        display_name: "Sharpe Ratio"
-        value: 0.1105
-        tolerance: {kind: relative, value: 0.05}
-      - name: sortino_ratio
-        display_name: "Sortino Ratio"
-        value: 0.1605
-        tolerance: {kind: relative, value: 0.05}
-      - name: maximum_drawdown
-        display_name: "Maximum Drawdown"
-        value: -0.1028
-        tolerance: {kind: absolute, value: 0.02}
-      - name: hpr
-        display_name: "HPR"
-        value: 0.0848
-        tolerance: {kind: relative, value: 0.05}
-      - name: monthly_return
-        display_name: "Monthly return"
-        value: 0.0056
-        tolerance: {kind: relative, value: 0.05}
-      - name: annual_return
-        display_name: "Annual return"
-        value: 0.0620
-        tolerance: {kind: relative, value: 0.05}
-    reference_outputs: []
-
-nine_step_coverage:
-  step_1_hypothesis: {present: true, section: "Hypothesis"}
-  step_2_data_collection: {present: true, section: "Data Collection"}
-  step_3_data_processing: {present: false, section: null}
-  step_4_in_sample: {present: true, section: "In-sample Backtesting"}
-  step_5_optimization: {present: true, section: "Optimization"}
-  step_6_out_of_sample: {present: true, section: "Out-of-sample Backtesting"}
-  step_7_paper_trading: {present: false, section: null}
-```
-
-Heads-up about the OOS values: the README claims `sharpe_ratio: 0.1105` for OOS, but the actual script produces `~0.0815` (~26% drift). This is a real upstream reproducibility issue (likely a risk-free or annualization mismatch — MDD matches exactly while Sharpe/Sortino/HPR don't). The manifest above uses the README-claimed values. After running `plutus check`, the OOS Sharpe/Sortino/HPR will fail. If the user wants the manifest to match the script (so `plutus check` passes), run `plutus snapshot` after Step 7 to overwrite — that's the snapshot-then-commit workflow.
-
-## Step 3 — Instrument `backtesting.py`
+## Step 2 — Instrument `backtesting.py`
 
 Find the `if __name__ == "__main__":` block (around line 350). It currently looks something like:
 
@@ -285,7 +109,7 @@ if __name__ == "__main__":
     bt.plot_inventory()
 ```
 
-Make two changes:
+Two changes:
 
 **1. Add the SDK import** near the other imports at the top:
 
@@ -293,7 +117,7 @@ Make two changes:
 import plutus_verify as pv
 ```
 
-**2. Refactor `__main__` so the metric values are bound to variables, then add the `pv.step` block**:
+**2. Refactor `__main__` so metric values are bound to variables, then add the `pv.step` block:**
 
 ```python
 if __name__ == "__main__":
@@ -333,11 +157,11 @@ if __name__ == "__main__":
         r.metadata(seed=2025)
 ```
 
-Critical: the `float(...)` casts matter. The script's metric methods return `Decimal`, and the SDK enforces `int|float` only. Without the cast, you get `ValueError: metric 'sharpe_ratio' value must be a finite number, got Decimal(...)`.
+**Critical:** the `float(...)` casts matter. The script's metric methods return `Decimal`, and the SDK enforces `int|float` only. Without the cast, you get `ValueError: metric 'sharpe_ratio' value must be a finite number, got Decimal(...)`.
 
-## Step 4 — Instrument `evaluation.py`
+## Step 3 — Instrument `evaluation.py`
 
-Find the `if __name__ == "__main__":` block (the entire file is short — ~30 lines). Replace it with:
+This file is shorter (~30 lines). Replace its `__main__` block with:
 
 ```python
 """
@@ -391,7 +215,244 @@ if __name__ == "__main__":
         r.metadata(seed=2025)
 ```
 
-## Step 5 — CI workflow
+## Step 4 — Run scripts locally to produce `results.json`
+
+Bootstrap needs the run artifacts (`results.json`) to auto-fill the manifest. Run both scripts locally on the host:
+
+```bash
+# Ensure data is in place. Either:
+#   (a) Run data_loader.py if you have DB credentials in your env:
+#       python data_loader.py
+#   (b) Manually download the four CSVs from
+#       https://drive.google.com/drive/folders/181d7JcfHilIvviLgEuaDt2VqwZLYnYUF
+#       into data/is/ and data/os/ matching the layout (VN30F1M_data.csv + VN30F2M_data.csv each).
+
+# Run the in-sample backtest
+python backtesting.py
+# Should print Sharpe/Sortino/HPR/etc. and produce
+#   .plutus/run/in_sample_backtest/results.json
+
+# Run the out-of-sample evaluation (depends on optimized_parameter.json
+# being already in the repo — it should ship with seed=2025)
+python evaluation.py
+# Produces .plutus/run/out_of_sample_backtest/results.json
+```
+
+Verify both files exist before bootstrap:
+
+```bash
+ls .plutus/run/*/results.json
+# .plutus/run/in_sample_backtest/results.json
+# .plutus/run/out_of_sample_backtest/results.json
+```
+
+If a script raises `ValueError: metric '...' value must be a finite number, got Decimal(...)`, you forgot a `float(...)` cast in Step 2 or Step 3. Fix and re-run.
+
+## Step 5 — `plutus bootstrap`
+
+```bash
+plutus bootstrap .
+```
+
+Expected output:
+
+```
+draft:    .plutus/manifest.yaml.draft  (2 steps, 12 metrics)
+guidance: .plutus/manifest_TODO.md
+
+Next: fill in TODO_* markers in the draft (see manifest_TODO.md),
+      rename .draft → .yaml, then run `plutus check`.
+```
+
+What got auto-filled (≈70% of the manifest):
+
+- `schema_version: "2.0"`
+- `repo.name: ProtoMarketMaker` (from your cwd)
+- `env.python_version: "3.11"` (detected from `.python-version` or `pyproject.toml`)
+- `env.requirements_file: requirements.txt` (detected from filesystem)
+- `steps[].id` for `in_sample_backtest` and `out_of_sample_backtest` (from `.plutus/run/` directories), with `network: none`, `timeout_seconds: 1800`, `outputs:` filled from each step's artifact paths
+- All 12 `expected.metrics[]` entries (6 in-sample + 6 OOS) with `name`, `display_name` (auto-converted from snake_case), current `value`, and default `tolerance: {kind: relative, value: 0.05}`
+- `expected.reference_outputs[]` per step with `compare: visual_similarity` for chart artifacts
+
+What needs your input (≈30% — the 8 unknowables, marked with `TODO_*` sentinels you can grep):
+
+```bash
+grep TODO_ .plutus/manifest.yaml.draft
+```
+
+## Step 6 — Fill in the TODOs
+
+Open `.plutus/manifest_TODO.md` in one buffer and `.plutus/manifest.yaml.draft` in another. Walk through each TODO. The guidance doc has worked examples for each section; this section gives the *ProtoMarketMaker-specific answers* for each.
+
+### 6.1 `env.os_packages`
+
+ProtoMarketMaker's deps don't require apt packages beyond what `python:3.11-slim` ships. Delete the TODO line, leave as empty list (or omit the key entirely):
+
+```yaml
+env:
+  base: python
+  python_version: '3.11'
+  requirements_file: requirements.txt
+  # os_packages omitted — no apt deps needed
+```
+
+### 6.2 `secrets[]`
+
+Five database keys for `data_collection`. Replace `secrets: []  # TODO_secrets: ...` with:
+
+```yaml
+secrets:
+  - key: DB_NAME
+    purpose: Algotrade database name
+    used_by: [data_collection]
+  - key: DB_USER
+    purpose: Algotrade database user
+    used_by: [data_collection]
+  - key: DB_PASSWORD
+    purpose: Algotrade database password
+    used_by: [data_collection]
+  - key: DB_HOST
+    purpose: Algotrade database host
+    used_by: [data_collection]
+  - key: DB_PORT
+    purpose: Algotrade database port
+    used_by: [data_collection]
+```
+
+### 6.3 `data_sources[]`
+
+Google Drive folder hosts the four CSVs. Replace `data_sources:` block with:
+
+```yaml
+data_sources:
+  processed: []
+  raw:
+    - kind: google_drive
+      url: https://drive.google.com/drive/folders/181d7JcfHilIvviLgEuaDt2VqwZLYnYUF
+      expected_layout:
+        - data/is/VN30F1M_data.csv
+        - data/is/VN30F2M_data.csv
+        - data/os/VN30F1M_data.csv
+        - data/os/VN30F2M_data.csv
+      satisfies: [data_collection]
+```
+
+This is the Tier 2 (raw) download. If the verifier finds the four files after gdown, it skips running `data_loader.py` (which needs DB creds).
+
+### 6.4 `steps[]` free-form additions — `data_collection` and `optimization`
+
+Bootstrap only auto-detected the two backtest steps (those run `pv.step`). You need to add `data_collection` and `optimization` by hand. In the `steps:` block, after the `TODO_steps` comment and before the auto-detected entries, add:
+
+```yaml
+steps:
+  - id: data_collection
+    nine_step: step_2_data_collection
+    required: true
+    network: bridge          # needs internet (DB or gdown)
+    timeout_seconds: 1800
+    command: "python data_loader.py"
+    inputs: []
+    outputs:
+      - data/is/VN30F1M_data.csv
+      - data/is/VN30F2M_data.csv
+      - data/os/VN30F1M_data.csv
+      - data/os/VN30F2M_data.csv
+
+  - id: optimization
+    nine_step: step_5_optimization
+    required: true
+    network: none
+    timeout_seconds: 1800
+    verification_mode: artifact_check
+    inputs:
+      - parameter/optimization_parameter.json
+    outputs:
+      - parameter/optimized_parameter.json
+    depends_on: [data_collection]
+
+  # then the two auto-detected backtest steps follow (next subsection)
+```
+
+`verification_mode: artifact_check` on `optimization` means the verifier skips re-running optuna — it just confirms the shipped `parameter/optimized_parameter.json` exists. The seed-2025 result is the verification artifact.
+
+### 6.5 `steps[].command|nine_step|inputs|depends_on` for the auto-detected steps
+
+For the two auto-detected steps (`in_sample_backtest`, `out_of_sample_backtest`), replace each TODO sentinel:
+
+**`in_sample_backtest`:**
+- `nine_step: TODO_nine_step_for_in_sample_backtest` → `nine_step: step_4_in_sample`
+- `command: TODO_command_for_in_sample_backtest` → `command: "python backtesting.py"`
+- `inputs: []  # TODO_inputs_for_in_sample_backtest` →
+  ```yaml
+  inputs:
+    - data/is/VN30F1M_data.csv
+    - data/is/VN30F2M_data.csv
+    - parameter/backtesting_parameter.json
+  ```
+- `depends_on: []  # TODO_depends_on_for_in_sample_backtest` → `depends_on: [data_collection]`
+
+**`out_of_sample_backtest`:**
+- `nine_step: TODO_nine_step_for_out_of_sample_backtest` → `nine_step: step_6_out_of_sample`
+- `command: TODO_command_for_out_of_sample_backtest` → `command: "python evaluation.py"`
+- `inputs:` →
+  ```yaml
+  inputs:
+    - data/os/VN30F1M_data.csv
+    - data/os/VN30F2M_data.csv
+    - parameter/optimized_parameter.json
+    - parameter/backtesting_parameter.json
+  ```
+- `depends_on:` → `depends_on: [optimization]`
+
+### 6.6 `nine_step_coverage`
+
+Replace the `present: false, section: null` skeleton with:
+
+```yaml
+nine_step_coverage:
+  step_1_hypothesis: {present: true, section: "Hypothesis"}
+  step_2_data_collection: {present: true, section: "Data Collection"}
+  step_3_data_processing: {present: false, section: null}
+  step_4_in_sample: {present: true, section: "In-sample Backtesting"}
+  step_5_optimization: {present: true, section: "Optimization"}
+  step_6_out_of_sample: {present: true, section: "Out-of-sample Backtesting"}
+  step_7_paper_trading: {present: false, section: null}
+```
+
+### 6.7 Verify all TODOs are resolved
+
+```bash
+grep TODO_ .plutus/manifest.yaml.draft
+# should print nothing
+```
+
+If anything is left, fix it. If you're unsure how to fill a TODO, look at the ground-truth manifest at `/Users/dan/algotrade-research/plutus-automation-scoring/out/transfer-test/ProtoMarketMaker/.plutus/manifest.yaml` — it has all 8 TODO sections filled with the verified-correct values.
+
+### 6.8 Heads-up on OOS values
+
+Bootstrap auto-filled `expected.metrics[].value` from the **script's actual output** (your current local run). For the OOS step, those values are the script's real numbers (~`sharpe_ratio: 0.0815`, `sortino_ratio: 0.118`, etc.), NOT the README's claimed values (`0.1105`, `0.1605`).
+
+The README documents *different* numbers. There's ~26% drift on Sharpe/Sortino/HPR (likely a risk-free-rate or annualization mismatch — MDD/Monthly/Annual return match exactly, so the price path is reproducing).
+
+**Two options:**
+
+- **(A) Land the manifest with the README-claimed values.** Manually edit the OOS metric `value:` fields to the README numbers (`sharpe_ratio: 0.1105`, `sortino_ratio: 0.1605`, `hpr: 0.0848`). When you run `plutus check`, the 3 OOS metrics will FAIL — that's the verifier doing its job, surfacing the README-vs-script divergence.
+
+- **(B) Land the manifest with the script's actual values (the bootstrap defaults).** The script values are what bootstrap already put in. `plutus check` will PASS all 12. You're claiming "the script's current output IS the reproducibility target," accepting that the README's claimed numbers are stale.
+
+Ask the maintainer before choosing. Path (A) is the conservative one for a first pass — surface the divergence loudly. Path (B) is appropriate when the maintainer is the one running the verification and accepts the script as authoritative.
+
+The verified end-state manifest in the sandbox uses **path (A)** — README-claimed values, exit-1 verdict expected.
+
+## Step 7 — Finalize the manifest
+
+When all TODOs are filled in and you've chosen path (A) or (B):
+
+```bash
+mv .plutus/manifest.yaml.draft .plutus/manifest.yaml
+```
+
+## Step 8 — CI workflow
 
 Create `.github/workflows/plutus.yml`:
 
@@ -407,7 +468,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install plutus-verify
-        run: pip install plutus-verify  # NOTE: only works after PyPI publish; until then this CI step will fail and is informational
+        run: pip install plutus-verify  # NOTE: only works after PyPI publish; informational until then
       - name: Run reproducibility check
         run: plutus check --secrets-from-env
         env:
@@ -418,47 +479,47 @@ jobs:
           DB_PORT: ${{ secrets.DB_PORT }}
 ```
 
-If the user wants CI to actually run today (before PyPI publish), change the install step to:
+If the user wants CI to actually run today (before plutus-verify is on PyPI), change the install step to a git URL:
 ```yaml
       - name: Install plutus-verify (from source)
         run: pip install git+https://github.com/<org>/plutus-automation-scoring.git@feat/spec-v2-foundation
 ```
-Ask the user for the right git URL — it depends on whether the verifier has a public remote yet.
+Ask the user for the right URL.
 
-## Step 6 — `.gitignore`
+## Step 9 — `.gitignore`
 
-Append to `.gitignore` (create if missing):
+Append:
 
 ```
 # plutus-verify ephemera
 .plutus/run/
 .plutus/build/
 .plutus/Dockerfile.generated
+.plutus/manifest.yaml.draft
+.plutus/manifest_TODO.md
 ```
 
-The author keeps `.plutus/manifest.yaml` + `.plutus/expected/` (if used) under version control. Run-artifacts and the generated Dockerfile are ephemeral.
+Keep `.plutus/manifest.yaml` + `.plutus/expected/` (if used) under version control. Run-artifacts, the generated Dockerfile, and the draft/TODO scaffolding are all ephemeral.
 
-## Step 7 — Run `plutus check` end-to-end
+## Step 10 — Run `plutus check` end-to-end
 
 ```bash
-cd <upstream-protomarketmaker-path>
-source .venv/bin/activate
 plutus check . 2>&1 | tee /tmp/plutus-check.log
 ```
 
 This will:
-1. Stage a `plutus-verify` wheel into `.plutus/build/` (verifier auto-injects the SDK)
+1. Stage a `plutus-verify` wheel into `.plutus/build/`
 2. Generate `.plutus/Dockerfile.generated` from the manifest's `env` block
 3. `docker build` an image (tagged by content hash)
-4. Download data from Google Drive (~30s, ~10MB)
-5. Run `python backtesting.py` inside the container — writes `.plutus/run/in_sample_backtest/results.json`
-6. Skip optimization (`artifact_check` mode — verifies the shipped `optimized_parameter.json` exists)
-7. Run `python evaluation.py` — writes `.plutus/run/out_of_sample_backtest/results.json`
-8. Compare each step's `results.json` metrics against the manifest's `expected.metrics` by name
+4. Download the four CSVs from Google Drive (~30s, ~10MB) — `data_collection` is satisfied by the data_source, so it doesn't run
+5. Run `python backtesting.py` inside the container — produces `.plutus/run/in_sample_backtest/results.json`
+6. Skip optimization (`artifact_check` mode — verifies `optimized_parameter.json` exists)
+7. Run `python evaluation.py` — produces `.plutus/run/out_of_sample_backtest/results.json`
+8. Compare each step's `results.json` against `expected.metrics` by name
 
 Total wall-clock: 6–10 minutes (build ~2 min cached, backtest ~3 min, eval ~3 min).
 
-**Expected output:**
+**Expected output (path A — README values):**
 
 ```
 building image from .plutus/Dockerfile.generated...
@@ -466,7 +527,7 @@ image: plutus-v2:<hash>
 data tier: raw
   ok data_collection: exit=0 (skipped: satisfied_by_data_source)
   ok in_sample_backtest: exit=0
-  ok optimization: exit=0 (skipped: artifact_check (no execution; outputs verified by preflight))
+  ok optimization: exit=0 (skipped: artifact_check ...)
   ok out_of_sample_backtest: exit=0
   ok in_sample_backtest.sharpe_ratio: actual=0.95... expected=0.9516
   ok in_sample_backtest.sortino_ratio: actual=1.34... expected=1.349
@@ -482,27 +543,11 @@ data tier: raw
   ok out_of_sample_backtest.annual_return: actual=0.062... expected=0.062
 ```
 
-Exit code 1. **6/6 in-sample pass, 3/6 OOS pass** is the expected verdict — the OOS Sharpe/Sortino/HPR divergence is a real upstream reproducibility issue, not a misconfiguration of the manifest.
+Exit code 1 (path A): **6/6 in-sample pass, 3/6 OOS pass**.
 
-## Step 8 — Decide what to do about the OOS divergence
+If path B (bootstrap values): exit 0, all 12 pass.
 
-Two options, depending on what the upstream maintainer wants:
-
-**A. Land the manifest with the README-claimed values (recommended for first pass).**
-Exit-1 surfaces the divergence as a visible failure. Either the README is wrong or the script needs a fix. Either way, the surfaced failure is the value — `plutus check` is doing its job.
-
-**B. Snapshot the script's actual values into the manifest.**
-If the maintainer accepts that the script is correct and the README is the stale party:
-```bash
-plutus snapshot --no-run .
-git diff .plutus/manifest.yaml
-git commit .plutus/manifest.yaml -m "manifest: snapshot OOS metrics to match script output"
-```
-After this, `plutus check` exits 0. The commit is the new claim.
-
-Ask the maintainer before doing B. The right answer is repo-policy, not a Claude decision.
-
-## Step 9 — Commit
+## Step 11 — Commit
 
 ```bash
 git checkout -b feat/plutus-verify-integration
@@ -521,9 +566,13 @@ expected.metrics within tolerance.
 
 Adds .github/workflows/plutus.yml so reproducibility is enforced on every PR.
 
-Verified end-to-end against the local plutus-verify v0.2.0 build:
-6/6 in-sample metrics pass; 3/6 out-of-sample pass (Sharpe/Sortino/HPR
-diverge ~26% from README claims — a real reproducibility finding the new
+Workflow used: instrument scripts → run locally → `plutus bootstrap` to
+auto-generate the manifest draft → fill 8 TODOs by hand using
+manifest_TODO.md guidance → `plutus check`.
+
+Verified end-to-end against plutus-verify v0.2.0:
+6/6 in-sample metrics pass; 3/6 out-of-sample pass — Sharpe/Sortino/HPR
+diverge ~26% from README claims (a real reproducibility finding the new
 contract surfaces, not a manifest configuration error).
 EOF
 )"
@@ -531,69 +580,88 @@ EOF
 
 Don't push without asking. Confirm the branch name and PR target with the user first.
 
-## Step 10 — Report back to user
+## Step 12 — Report back to user
 
 Include:
 - Branch name + commit SHA
-- Exit code from `plutus check` (1 expected)
+- Exit code from `plutus check` (1 for path A, 0 for path B)
 - Pass/fail count per step
 - Path to `/tmp/plutus-check.log` for raw output
-- The OOS divergence numbers (so they can decide on Step 8 path A vs B)
+- Which OOS divergence path was chosen (A or B) and why
+- Any surprises during bootstrap (TODO sentinels left unresolved, unexpected metric drift, etc.)
 
 ## Troubleshooting
 
-### "ModuleNotFoundError: No module named 'plutus_verify'" inside the container
+### `plutus bootstrap` reports "no results.json files found"
+
+Step 4 didn't produce `.plutus/run/<step_id>/results.json`. Re-run the scripts:
+```bash
+python backtesting.py
+python evaluation.py
+ls .plutus/run/*/results.json
+```
+
+If the scripts crash with `ImportError: No module named plutus_verify`, your host venv doesn't have the verifier installed. Re-run Step 1.
+
+### `ValueError: metric 'X' value must be a finite number`
+
+You forgot a `float(...)` cast on a `Decimal` value in the `r.metric(...)` call. The SDK only accepts int/float.
+
+### `ModuleNotFoundError: No module named 'plutus_verify'` inside the container
 
 The SDK auto-injection failed. Check:
 ```bash
 ls .plutus/build/
 # should contain plutus_verify-0.2.0-py3-none-any.whl
 cat .plutus/Dockerfile.generated | grep plutus_verify
-# should show two lines: COPY .plutus/build/plutus_verify-0.2.0-py3-none-any.whl /tmp/...
-#                       RUN pip install --no-cache-dir /tmp/plutus_verify-0.2.0-py3-none-any.whl
+# should show: COPY .plutus/build/plutus_verify-0.2.0-py3-none-any.whl /tmp/...
+#              RUN pip install --no-cache-dir /tmp/plutus_verify-0.2.0-py3-none-any.whl
 ```
 
-If the wheel isn't there: the verifier couldn't find its own source. Most likely `pip install -e ...` wasn't run, or was run for the wrong Python interpreter. Verify with:
+If the wheel isn't there: the verifier couldn't find its own source. Most likely `pip install -e ...` wasn't run, or was run for the wrong Python interpreter. Verify:
 ```bash
 python -c "from importlib.metadata import distribution; d = distribution('plutus-verify'); print(d.version)"
 ```
 Should print `0.2.0`.
 
-### "ValueError: metric 'X' value must be a finite number"
-
-You forgot the `float(...)` cast on a `Decimal` value. The SDK only accepts int/float, not Decimal.
-
-### "MissingResultsError: expected .plutus/run/.../results.json"
+### `MissingResultsError: expected .plutus/run/.../results.json`
 
 The `pv.step(...)` block didn't reach `__exit__`. Either the script crashed before the block, or the block raised. Check:
-- Did the print statements above the `pv.step` block fire? (They appear in container stdout.)
-- Did the `pv.step` block raise an exception? (Look for `ValueError` from `r.metric(...)`.)
+- Did the print statements above the `pv.step` block fire?
+- Did the `pv.step` block raise a `ValueError` from a `r.metric(...)` call?
 
-### "docker build failed" with permission denied
+### `plutus bootstrap` says "manifest.yaml already exists"
 
-Docker daemon isn't running, or your user isn't in the `docker` group. On Linux: `sudo systemctl start docker` and verify `docker info` works without sudo.
+You're past the bootstrap stage. If you want to regenerate, delete `.plutus/manifest.yaml` first (or use `plutus snapshot --no-run` to refresh just the values in the existing manifest).
 
 ### Google Drive download stalls or fails
 
-The data source uses `gdown`. Common failures:
-- Folder URL is public; if it goes private, the download breaks
+Common failures:
+- Folder URL goes private — download breaks
 - Rate limits (rare for ~10MB)
 - Network proxy interference
 
-Workaround: download the four CSVs by hand into the matching paths under `data/is/` and `data/os/`. The verifier will detect the files are already present and skip the download.
+Workaround: download the four CSVs by hand into the matching paths under `data/is/` and `data/os/`. The verifier will detect the files are already present and skip the download (Tier 3 fallback: run the data_collection step's command — but since you have data already, the layout check passes).
 
-## Reference: the ground-truth working state
+### `docker build failed` with permission denied
+
+Docker daemon isn't running, or your user isn't in the `docker` group. On Linux: `sudo systemctl start docker` and verify `docker info` works without sudo.
+
+## Reference: ground-truth working state
 
 The exact same transformation was applied and verified end-to-end at:
 ```
 /Users/dan/algotrade-research/plutus-automation-scoring/out/transfer-test/ProtoMarketMaker/
 ```
 
-If anything in this briefing seems wrong or incomplete, diff against that directory. It's the source of truth.
+When in doubt about how to fill a TODO, that directory's `.plutus/manifest.yaml` is the source of truth.
 
 ## What success looks like
 
 - Branch `feat/plutus-verify-integration` exists in the upstream repo
-- Commit lands cleanly, no merge conflicts
-- `plutus check .` produces the expected 6/6 + 3/6 verdict (or, per Step 8B, 6/6 + 6/6 after snapshot)
+- Bootstrap produced `.plutus/manifest.yaml.draft` cleanly; TODOs were filled following manifest_TODO.md + the ProtoMarketMaker-specific answers in Step 6
+- `.plutus/manifest.yaml` exists (renamed from `.draft`), all TODOs resolved, schema-valid
+- `plutus check .` produces:
+  - Path A: exit 1, 6/6 in-sample + 3/6 OOS (Sharpe/Sortino/HPR fail — the README divergence)
+  - Path B: exit 0, 6/6 + 6/6
 - A PR is opened (if user requested) and CI green (or red on the OOS divergence — that's a feature, not a bug)
