@@ -4,9 +4,25 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "plutus-verify"
-version = "0.1.0"
+version = "0.2.0"
 description = "Automated reproducibility verifier for PLUTUS-standard trading algorithm repos"
+readme = "README.md"
 requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "Dân", email = "andan@algotrade.vn"}]
+keywords = ["reproducibility", "trading", "backtest", "plutus", "verification"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Financial and Insurance Industry",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Office/Business :: Financial",
+  "Topic :: Software Development :: Quality Assurance",
+]
 dependencies = [
   "click>=8.1",
   "pyyaml>=6.0",
@@ -19,6 +35,10 @@ llm = ["openai>=1.40"]
 runner = ["docker>=7.0", "jupyter-repo2docker>=2024.3"]
 charts = ["cairosvg>=2.7", "pillow>=10.0"]
 dev = ["pytest>=8.0", "pytest-cov>=4.1"]
+
+[project.urls]
+Source = "https://github.com/algotrade-plutus/plutus-verify"
+Issues = "https://github.com/algotrade-plutus/plutus-verify/issues"
 
 [project.scripts]
 plutus-verify = "plutus_verify.__main__:main"
