@@ -43,6 +43,13 @@ def update_headline_values(
 
     yaml = YAML(typ="rt")
     yaml.preserve_quotes = True
+    # Match the PLUTUS manifest convention (2-space mapping indent, 4-space
+    # sequence indent with the dash at column 2). Without this, ruamel emits
+    # flush-left dashes for top-level sequences, churning the entire file.
+    yaml.indent(mapping=2, sequence=4, offset=2)
+    # Disable line-wrapping — long strings (URLs, regex patterns) wrap at 80
+    # columns by default, which churns the diff.
+    yaml.width = 4096
     try:
         data = yaml.load(text)
     except YAMLError as exc:
