@@ -66,7 +66,7 @@ from plutus_verify.spec.manifest import (
     DataSourceTiers,
     Env,
     ExpectedBlock,
-    Headline,
+    ExpectedMetric,
     Locate,
     Manifest,
     NineStepCoverage,
@@ -83,7 +83,7 @@ __all__ = [
     "DataSourceTiers",
     "Env",
     "ExpectedBlock",
-    "Headline",
+    "ExpectedMetric",
     "Locate",
     "Manifest",
     "ManifestLoadError",
@@ -108,7 +108,7 @@ from plutus_verify.spec.manifest import (
     DataSourceTiers,
     Env,
     ExpectedBlock,
-    Headline,
+    ExpectedMetric,
     Locate,
     Manifest,
     NineStepCoverage,
@@ -172,8 +172,8 @@ def test_data_source_satisfies_multiple_steps():
     assert ds.satisfies == ("data_collection", "data_processing")
 
 
-def test_headline_uses_locate_and_tolerance():
-    h = Headline(
+def test_metric_uses_locate_and_tolerance():
+    h = ExpectedMetric(
         name="sharpe_ratio",
         value=0.85,
         locate=Locate(kind="json_file", path="out/m.json", jsonpath="$.sharpe"),
@@ -284,7 +284,7 @@ class Tolerance:
 
 
 @dataclass(frozen=True)
-class Headline:
+class ExpectedMetric:
     name: str
     value: "float | str"
     locate: Locate
@@ -301,7 +301,7 @@ class ReferenceOutput:
 @dataclass(frozen=True)
 class ExpectedBlock:
     step_id: str
-    headlines: tuple[Headline, ...] = ()
+    metrics: tuple[ExpectedMetric, ...] = ()
     reference_outputs: tuple[ReferenceOutput, ...] = ()
 
 
@@ -451,12 +451,12 @@ def test_schema_accepts_data_sources_with_satisfies():
     Draft202012Validator(MANIFEST_SCHEMA).validate(d)
 
 
-def test_schema_accepts_expected_with_headline_and_reference_output():
+def test_schema_accepts_expected_with_metric_and_reference_output():
     d = _minimal_valid_dict()
     d["expected"].append(
         {
             "step_id": "in_sample",
-            "headlines": [
+            "metrics": [
                 {
                     "name": "sharpe_ratio",
                     "value": 0.85,
@@ -485,7 +485,7 @@ def test_schema_rejects_unknown_compare_kind():
     d["expected"].append(
         {
             "step_id": "in_sample",
-            "headlines": [],
+            "metrics": [],
             "reference_outputs": [
                 {"path": "out/x.json", "compare": "fuzzy_magic"}
             ],
@@ -691,7 +691,7 @@ MANIFEST_SCHEMA: dict[str, Any] = {
                 "required": ["step_id"],
                 "properties": {
                     "step_id": {"type": "string"},
-                    "headlines": {"type": "array", "items": _HEADLINE},
+                    "metrics": {"type": "array", "items": _HEADLINE},
                     "reference_outputs": {
                         "type": "array",
                         "items": _REFERENCE_OUTPUT,
@@ -864,7 +864,7 @@ steps:
     outputs: ["models/clf.pkl"]
 expected:
   - step_id: in_sample
-    headlines:
+    metrics:
       - name: sharpe_ratio
         value: 0.85
         locate: {kind: json_file, path: "out/metrics.json", jsonpath: "$.sharpe"}
@@ -885,7 +885,7 @@ nine_step_coverage:
     assert m.steps[3].label == "Custom: train classifier"
     assert len(m.data_sources.processed) == 1
     assert m.data_sources.processed[0].satisfies == ("data_collection", "data_processing")
-    assert m.expected[0].headlines[0].value == 0.85
+    assert m.expected[0].metrics[0].value == 0.85
     assert m.expected[0].reference_outputs[1].threshold == 0.7
     assert m.nine_step_coverage["step_1_hypothesis"].present is True
 ```
@@ -920,7 +920,7 @@ from plutus_verify.spec.manifest import (
     DataSourceTiers,
     Env,
     ExpectedBlock,
-    Headline,
+    ExpectedMetric,
     Locate,
     Manifest,
     NineStepCoverage,
@@ -1033,8 +1033,8 @@ def _build_step(d: dict[str, Any]) -> Step:
 
 
 def _build_expected(d: dict[str, Any]) -> ExpectedBlock:
-    headlines = tuple(
-        Headline(
+    metrics = tuple(
+        ExpectedMetric(
             name=h["name"],
             value=h["value"],
             locate=Locate(
@@ -1049,7 +1049,7 @@ def _build_expected(d: dict[str, Any]) -> ExpectedBlock:
                 kind=h["tolerance"]["kind"], value=h["tolerance"]["value"]
             ),
         )
-        for h in d.get("headlines", [])
+        for h in d.get("metrics", [])
     )
     refs = tuple(
         ReferenceOutput(
@@ -1059,7 +1059,7 @@ def _build_expected(d: dict[str, Any]) -> ExpectedBlock:
         )
         for r in d.get("reference_outputs", [])
     )
-    return ExpectedBlock(step_id=d["step_id"], headlines=headlines, reference_outputs=refs)
+    return ExpectedBlock(step_id=d["step_id"], metrics=metrics, reference_outputs=refs)
 ```
 
 - [ ] **Step 4: Re-enable loader exports in `spec/__init__.py`**
@@ -1182,7 +1182,7 @@ steps:
     command: "echo a"
 expected:
   - step_id: ghost
-    headlines: []
+    metrics: []
     reference_outputs: []
 nine_step_coverage: {}
 """
@@ -1386,7 +1386,7 @@ git commit -m "feat(spec): cross-field invariants validator"
 | `steps[*].depends_on/verification_mode`  | `Step.depends_on/verification_mode`               |
 | `steps[*].nine_step` (str)               | `Step.nine_step`                                  |
 | `steps[*].nine_step` (None — free-form)  | Mapped to `step_4_in_sample` placeholder + extraction_notes entry |
-| `expected[*].headlines[*]`               | `ExpectedResult.metrics[*]`                       |
+| `expected[*].metrics[*]`               | `ExpectedResult.metrics[*]`                       |
 | `expected[*].reference_outputs[*]`       | `ExpectedResult.charts[*]` (only `visual_similarity`); other kinds LOST until Plan 2 |
 | `nine_step_coverage`                     | `nine_step_mapping` (confidence forced to 1.0)    |
 
@@ -1418,7 +1418,7 @@ steps:
     outputs: ["out/metrics.json"]
 expected:
   - step_id: in_sample
-    headlines:
+    metrics:
       - name: sharpe_ratio
         value: 0.85
         locate: {kind: json_file, path: "out/metrics.json", jsonpath: "$.sharpe"}
@@ -1463,7 +1463,7 @@ def test_adapter_maps_step_and_outputs_to_produces():
     assert s.produces == ("out/metrics.json",)
 
 
-def test_adapter_maps_headlines_to_expected_metrics():
+def test_adapter_maps_metrics_to_expected_metrics():
     m = load_manifest_from_yaml_text(_MIN)
     p = to_extracted_plan(m)
     assert len(p.expected_results) == 1
@@ -1763,7 +1763,7 @@ def _expected(er, notes: list[str]) -> ExpectedResult:
             ),
             tolerance=PlanTolerance(kind=h.tolerance.kind, value=h.tolerance.value),
         )
-        for h in er.headlines
+        for h in er.metrics
     )
     chart_refs = []
     for r in er.reference_outputs:
@@ -2167,7 +2167,7 @@ steps:
     outputs: ["out/metrics.json"]
 expected:
   - step_id: in_sample
-    headlines:
+    metrics:
       - name: sharpe_ratio
         value: 0.85
         locate: {kind: json_file, path: "out/metrics.json", jsonpath: "$.sharpe"}

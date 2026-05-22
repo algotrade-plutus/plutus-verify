@@ -63,7 +63,7 @@ def test_init_writes_example_script(tmp_path: Path):
     assert text.lstrip().startswith('"""')
     # Demonstrates the SDK call patterns authors must copy
     assert "pv.step(" in text
-    assert "r.headline(" in text
+    assert "r.metric(" in text
 
 
 def test_init_returns_created_example_script_true_on_first_init(tmp_path: Path):

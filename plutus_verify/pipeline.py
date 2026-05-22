@@ -707,7 +707,7 @@ def _run_v2_native_path(
 
     TODO(plan2-task6-report-synthesis): v2 run's report.md/json currently lists
     no per-step metrics or charts, and nine_step_coverage is always empty. Wire
-    HeadlineResult into MetricComparison and translate manifest.nine_step_coverage
+    ExpectedMetricResult into MetricComparison and translate manifest.nine_step_coverage
     into the report. Not a regression (v2 routing is correct) — just a fidelity gap.
     """
     # Image builder adapter: the v2 orchestrator expects
@@ -718,7 +718,7 @@ def _run_v2_native_path(
     def _image_builder(dockerfile_text: str, repo_path: Any) -> str:
         # TODO(plan2-task6-report-synthesis): v2 run's report.md/json currently lists
         # no per-step metrics or charts, and nine_step_coverage is always empty. Wire
-        # HeadlineResult into MetricComparison and translate manifest.nine_step_coverage
+        # ExpectedMetricResult into MetricComparison and translate manifest.nine_step_coverage
         # into the report. Not a regression (v2 routing is correct) — just a fidelity gap.
         result = _invoke_builder(
             builder,
@@ -806,25 +806,25 @@ def _run_v2_native_path(
             step_id=step.id,
             required=step.required,
             exec_outcome=exec_outcome,
-            metrics=[],   # TODO(plan2-task6-report-synthesis): v2 run's report.md/json currently lists no per-step metrics or charts, and nine_step_coverage is always empty. Wire HeadlineResult into MetricComparison and translate manifest.nine_step_coverage into the report. Not a regression (v2 routing is correct) — just a fidelity gap.
-            charts=[],    # TODO(plan2-task6-report-synthesis): v2 run's report.md/json currently lists no per-step metrics or charts, and nine_step_coverage is always empty. Wire HeadlineResult into MetricComparison and translate manifest.nine_step_coverage into the report. Not a regression (v2 routing is correct) — just a fidelity gap.
+            metrics=[],   # TODO(plan2-task6-report-synthesis): v2 run's report.md/json currently lists no per-step metrics or charts, and nine_step_coverage is always empty. Wire ExpectedMetricResult into MetricComparison and translate manifest.nine_step_coverage into the report. Not a regression (v2 routing is correct) — just a fidelity gap.
+            charts=[],    # TODO(plan2-task6-report-synthesis): v2 run's report.md/json currently lists no per-step metrics or charts, and nine_step_coverage is always empty. Wire ExpectedMetricResult into MetricComparison and translate manifest.nine_step_coverage into the report. Not a regression (v2 routing is correct) — just a fidelity gap.
         ))
 
     overall = aggregate_overall(step_reports)
 
     n_hl_pass = sum(
         1
-        for step_hl in v2_result.headline_results.values()
+        for step_hl in v2_result.metric_results.values()
         for hr in step_hl.values()
         if hr.ok
     )
     n_hl_fail = sum(
         1
-        for step_hl in v2_result.headline_results.values()
+        for step_hl in v2_result.metric_results.values()
         for hr in step_hl.values()
         if not hr.ok
     )
-    compare_summary = f"headlines {n_hl_pass} pass / {n_hl_fail} fail (v2)"
+    compare_summary = f"metrics {n_hl_pass} pass / {n_hl_fail} fail (v2)"
     trail.append(TrailEntry(
         stage="compare",
         outcome="ok" if not n_hl_fail else "partial",
@@ -848,7 +848,7 @@ def _run_v2_native_path(
         overall=overall,
         meta=meta,
         extraction_notes=[],
-        nine_step_coverage={},  # TODO(plan2-task6-report-synthesis): v2 run's report.md/json currently lists no per-step metrics or charts, and nine_step_coverage is always empty. Wire HeadlineResult into MetricComparison and translate manifest.nine_step_coverage into the report. Not a regression (v2 routing is correct) — just a fidelity gap.
+        nine_step_coverage={},  # TODO(plan2-task6-report-synthesis): v2 run's report.md/json currently lists no per-step metrics or charts, and nine_step_coverage is always empty. Wire ExpectedMetricResult into MetricComparison and translate manifest.nine_step_coverage into the report. Not a regression (v2 routing is correct) — just a fidelity gap.
         findings=[],
         verification_trail=trail,
     )

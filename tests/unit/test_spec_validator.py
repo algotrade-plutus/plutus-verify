@@ -88,7 +88,7 @@ steps:
     command: "echo a"
 expected:
   - step_id: ghost
-    headlines: []
+    metrics: []
     reference_outputs: []
 nine_step_coverage: {}
 """

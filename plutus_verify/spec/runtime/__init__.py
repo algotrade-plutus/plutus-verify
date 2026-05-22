@@ -1,6 +1,6 @@
 """Native v2 execution: build, run, compare directly from Manifest (no adapter)."""
 from plutus_verify.spec.runtime.orchestrator import (
-    HeadlineResult,
+    ExpectedMetricResult,
     StepRuntimeResult,
     V2RuntimeResult,
     run_v2_pipeline,
@@ -28,7 +28,7 @@ from plutus_verify.spec.runtime.sdk_bundle import (
 __all__ = [
     "Artifact",
     "BuildError",
-    "HeadlineResult",
+    "ExpectedMetricResult",
     "MalformedResultsError",
     "Metric",
     "MetricNotProducedError",

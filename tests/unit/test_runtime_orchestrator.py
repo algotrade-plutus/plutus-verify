@@ -51,7 +51,7 @@ steps:
     outputs: ["out/metrics.json"]
 expected:
   - step_id: in_sample
-    headlines:
+    metrics:
       - name: sharpe
         value: 0.85
         tolerance: {kind: relative, value: 0.05}
@@ -68,7 +68,7 @@ def _stage_repo(tmp_path: Path):
     (tmp_path / "out" / "metrics.json").write_text('{"sharpe": 0.86}')
 
 
-def test_runtime_runs_all_steps_and_compares_headlines(tmp_path):
+def test_runtime_runs_all_steps_and_compares_metrics(tmp_path):
     _stage_repo(tmp_path)
     manifest = load_manifest_from_yaml_text(_YAML)
     image_builder = MagicMock(return_value="built-image-tag")
@@ -79,7 +79,7 @@ def test_runtime_runs_all_steps_and_compares_headlines(tmp_path):
 
     # Pre-write the results.json that the (fake) script would have produced.
     with pv_step("in_sample", repo_path=tmp_path) as r:
-        r.headline("sharpe", 0.86, unit="ratio")
+        r.metric("sharpe", 0.86, unit="ratio")
 
     result = run_v2_pipeline(
         manifest,
@@ -94,7 +94,7 @@ def test_runtime_runs_all_steps_and_compares_headlines(tmp_path):
     assert result.image == "built-image-tag"
     image_builder.assert_called_once()
     assert runner.run.call_count == 2  # data_collection + in_sample
-    hr = result.headline_results["in_sample"]["sharpe"]
+    hr = result.metric_results["in_sample"]["sharpe"]
     assert hr.ok is True
     assert hr.actual == 0.86
     assert hr.expected == 0.85
@@ -181,11 +181,11 @@ def test_runtime_preflight_failure_marks_step_skipped(tmp_path):
     assert "missing output" in dc.preflight_error
 
 
-# --- Plan 6 / Task 4: headline comparison reads results.json by metric name ---
+# --- Plan 6 / Task 4: metric comparison reads results.json by metric name ---
 
 
-def _make_manifest_with_headlines(headlines_yaml: str) -> str:
-    """Build a manifest YAML string with the given headlines block."""
+def _make_manifest_with_metrics(metrics_yaml: str) -> str:
+    """Build a manifest YAML string with the given metrics block."""
     return f"""\
 schema_version: "2.0"
 repo: {{name: T, primary_language: python}}
@@ -206,8 +206,8 @@ steps:
     outputs: ["out/metrics.json"]
 expected:
   - step_id: in_sample
-    headlines:
-{headlines_yaml}
+    metrics:
+{metrics_yaml}
     reference_outputs: []
 nine_step_coverage: {{}}
 """
@@ -221,9 +221,9 @@ def _runner_ok():
     return runner
 
 
-def test_headline_passes_when_results_json_value_matches_within_tolerance(tmp_path):
+def test_metric_passes_when_results_json_value_matches_within_tolerance(tmp_path):
     _stage_repo(tmp_path)
-    yaml = _make_manifest_with_headlines(
+    yaml = _make_manifest_with_metrics(
         "      - name: sharpe_ratio\n"
         "        value: 0.95\n"
         "        tolerance: {kind: relative, value: 0.05}\n"
@@ -231,7 +231,7 @@ def test_headline_passes_when_results_json_value_matches_within_tolerance(tmp_pa
     manifest = load_manifest_from_yaml_text(yaml)
 
     with pv_step("in_sample", repo_path=tmp_path) as r:
-        r.headline("sharpe_ratio", 0.95, unit="ratio")
+        r.metric("sharpe_ratio", 0.95, unit="ratio")
 
     result = run_v2_pipeline(
         manifest,
@@ -242,15 +242,15 @@ def test_headline_passes_when_results_json_value_matches_within_tolerance(tmp_pa
         secrets={},
     )
 
-    hr = result.headline_results["in_sample"]["sharpe_ratio"]
+    hr = result.metric_results["in_sample"]["sharpe_ratio"]
     assert hr.ok is True
     assert hr.actual == 0.95
     assert hr.expected == 0.95
 
 
-def test_headline_fails_when_results_json_value_outside_tolerance(tmp_path):
+def test_metric_fails_when_results_json_value_outside_tolerance(tmp_path):
     _stage_repo(tmp_path)
-    yaml = _make_manifest_with_headlines(
+    yaml = _make_manifest_with_metrics(
         "      - name: sharpe_ratio\n"
         "        value: 0.95\n"
         "        tolerance: {kind: relative, value: 0.05}\n"
@@ -258,7 +258,7 @@ def test_headline_fails_when_results_json_value_outside_tolerance(tmp_path):
     manifest = load_manifest_from_yaml_text(yaml)
 
     with pv_step("in_sample", repo_path=tmp_path) as r:
-        r.headline("sharpe_ratio", 0.80, unit="ratio")
+        r.metric("sharpe_ratio", 0.80, unit="ratio")
 
     result = run_v2_pipeline(
         manifest,
@@ -269,16 +269,16 @@ def test_headline_fails_when_results_json_value_outside_tolerance(tmp_path):
         secrets={},
     )
 
-    hr = result.headline_results["in_sample"]["sharpe_ratio"]
+    hr = result.metric_results["in_sample"]["sharpe_ratio"]
     assert hr.ok is False
     assert hr.actual == 0.80
     assert hr.expected == 0.95
     assert "0.95" in hr.detail  # tolerance detail mentions the expected value
 
 
-def test_missing_results_json_fails_every_headline(tmp_path):
+def test_missing_results_json_fails_every_metric(tmp_path):
     _stage_repo(tmp_path)
-    yaml = _make_manifest_with_headlines(
+    yaml = _make_manifest_with_metrics(
         "      - name: sharpe_ratio\n"
         "        value: 0.95\n"
         "        tolerance: {kind: relative, value: 0.05}\n"
@@ -298,7 +298,7 @@ def test_missing_results_json_fails_every_headline(tmp_path):
         secrets={},
     )
 
-    hrs = result.headline_results["in_sample"]
+    hrs = result.metric_results["in_sample"]
     assert set(hrs.keys()) == {"sharpe_ratio", "sortino_ratio"}
     for name, hr in hrs.items():
         assert hr.ok is False
@@ -306,9 +306,9 @@ def test_missing_results_json_fails_every_headline(tmp_path):
         assert "results.json missing" in hr.detail
 
 
-def test_metric_not_produced_fails_only_that_headline(tmp_path):
+def test_metric_not_produced_fails_only_that_metric(tmp_path):
     _stage_repo(tmp_path)
-    yaml = _make_manifest_with_headlines(
+    yaml = _make_manifest_with_metrics(
         "      - name: sharpe_ratio\n"
         "        value: 0.95\n"
         "        tolerance: {kind: relative, value: 0.05}\n"
@@ -320,7 +320,7 @@ def test_metric_not_produced_fails_only_that_headline(tmp_path):
 
     # Write only sharpe_ratio — sortino_ratio is absent.
     with pv_step("in_sample", repo_path=tmp_path) as r:
-        r.headline("sharpe_ratio", 0.95, unit="ratio")
+        r.metric("sharpe_ratio", 0.95, unit="ratio")
 
     result = run_v2_pipeline(
         manifest,
@@ -331,7 +331,7 @@ def test_metric_not_produced_fails_only_that_headline(tmp_path):
         secrets={},
     )
 
-    hrs = result.headline_results["in_sample"]
+    hrs = result.metric_results["in_sample"]
     assert hrs["sharpe_ratio"].ok is True
     assert hrs["sharpe_ratio"].actual == 0.95
 
@@ -343,7 +343,7 @@ def test_metric_not_produced_fails_only_that_headline(tmp_path):
 
 def test_relative_tolerance_pass_within_bounds(tmp_path):
     _stage_repo(tmp_path)
-    yaml = _make_manifest_with_headlines(
+    yaml = _make_manifest_with_metrics(
         "      - name: sharpe_ratio\n"
         "        value: 1.0\n"
         "        tolerance: {kind: relative, value: 0.05}\n"
@@ -351,7 +351,7 @@ def test_relative_tolerance_pass_within_bounds(tmp_path):
     manifest = load_manifest_from_yaml_text(yaml)
 
     with pv_step("in_sample", repo_path=tmp_path) as r:
-        r.headline("sharpe_ratio", 1.04, unit="ratio")  # 4% off → within 5%
+        r.metric("sharpe_ratio", 1.04, unit="ratio")  # 4% off → within 5%
 
     result = run_v2_pipeline(
         manifest,
@@ -362,13 +362,13 @@ def test_relative_tolerance_pass_within_bounds(tmp_path):
         secrets={},
     )
 
-    hr = result.headline_results["in_sample"]["sharpe_ratio"]
+    hr = result.metric_results["in_sample"]["sharpe_ratio"]
     assert hr.ok is True
 
 
 def test_relative_tolerance_fail_outside_bounds(tmp_path):
     _stage_repo(tmp_path)
-    yaml = _make_manifest_with_headlines(
+    yaml = _make_manifest_with_metrics(
         "      - name: sharpe_ratio\n"
         "        value: 1.0\n"
         "        tolerance: {kind: relative, value: 0.05}\n"
@@ -376,7 +376,7 @@ def test_relative_tolerance_fail_outside_bounds(tmp_path):
     manifest = load_manifest_from_yaml_text(yaml)
 
     with pv_step("in_sample", repo_path=tmp_path) as r:
-        r.headline("sharpe_ratio", 1.10, unit="ratio")  # 10% off → outside 5%
+        r.metric("sharpe_ratio", 1.10, unit="ratio")  # 10% off → outside 5%
 
     result = run_v2_pipeline(
         manifest,
@@ -387,14 +387,14 @@ def test_relative_tolerance_fail_outside_bounds(tmp_path):
         secrets={},
     )
 
-    hr = result.headline_results["in_sample"]["sharpe_ratio"]
+    hr = result.metric_results["in_sample"]["sharpe_ratio"]
     assert hr.ok is False
     assert hr.actual == 1.10
 
 
 def test_absolute_tolerance_pass_within_bounds(tmp_path):
     _stage_repo(tmp_path)
-    yaml = _make_manifest_with_headlines(
+    yaml = _make_manifest_with_metrics(
         "      - name: max_drawdown\n"
         "        value: -0.20\n"
         "        tolerance: {kind: absolute, value: 0.02}\n"
@@ -402,7 +402,7 @@ def test_absolute_tolerance_pass_within_bounds(tmp_path):
     manifest = load_manifest_from_yaml_text(yaml)
 
     with pv_step("in_sample", repo_path=tmp_path) as r:
-        r.headline("max_drawdown", -0.21, unit="ratio")  # |diff|=0.01 ≤ 0.02
+        r.metric("max_drawdown", -0.21, unit="ratio")  # |diff|=0.01 ≤ 0.02
 
     result = run_v2_pipeline(
         manifest,
@@ -413,14 +413,14 @@ def test_absolute_tolerance_pass_within_bounds(tmp_path):
         secrets={},
     )
 
-    hr = result.headline_results["in_sample"]["max_drawdown"]
+    hr = result.metric_results["in_sample"]["max_drawdown"]
     assert hr.ok is True
     assert hr.actual == -0.21
 
 
 def test_absolute_tolerance_fail_outside_bounds(tmp_path):
     _stage_repo(tmp_path)
-    yaml = _make_manifest_with_headlines(
+    yaml = _make_manifest_with_metrics(
         "      - name: max_drawdown\n"
         "        value: -0.20\n"
         "        tolerance: {kind: absolute, value: 0.02}\n"
@@ -428,7 +428,7 @@ def test_absolute_tolerance_fail_outside_bounds(tmp_path):
     manifest = load_manifest_from_yaml_text(yaml)
 
     with pv_step("in_sample", repo_path=tmp_path) as r:
-        r.headline("max_drawdown", -0.25, unit="ratio")  # |diff|=0.05 > 0.02
+        r.metric("max_drawdown", -0.25, unit="ratio")  # |diff|=0.05 > 0.02
 
     result = run_v2_pipeline(
         manifest,
@@ -439,7 +439,7 @@ def test_absolute_tolerance_fail_outside_bounds(tmp_path):
         secrets={},
     )
 
-    hr = result.headline_results["in_sample"]["max_drawdown"]
+    hr = result.metric_results["in_sample"]["max_drawdown"]
     assert hr.ok is False
     assert hr.actual == -0.25
 
@@ -479,7 +479,7 @@ def test_run_v2_pipeline_stages_sdk_wheel_and_passes_basename_to_dockerfile_gen(
     )
 
     with pv_step("in_sample", repo_path=tmp_path) as r:
-        r.headline("sharpe", 0.86, unit="ratio")
+        r.metric("sharpe", 0.86, unit="ratio")
 
     result = run_v2_pipeline(
         manifest,
@@ -531,7 +531,7 @@ def test_run_v2_pipeline_handles_sdk_bundle_error_gracefully(
     )
 
     with pv_step("in_sample", repo_path=tmp_path) as r:
-        r.headline("sharpe", 0.86, unit="ratio")
+        r.metric("sharpe", 0.86, unit="ratio")
 
     result = run_v2_pipeline(
         manifest,

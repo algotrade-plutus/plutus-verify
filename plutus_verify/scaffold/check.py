@@ -38,7 +38,7 @@ def scaffold_check(
 
 
 def _exit_code(manifest, runtime: V2RuntimeResult) -> int:
-    """0 = all required steps + headlines pass; 1 = soft fail; 2 = required hard fail."""
+    """0 = all required steps + metrics pass; 1 = soft fail; 2 = required hard fail."""
     required_ids = {s.id for s in manifest.steps if s.required}
 
     for sid, sr in runtime.step_results.items():
@@ -47,7 +47,7 @@ def _exit_code(manifest, runtime: V2RuntimeResult) -> int:
         if sid in required_ids and sr.preflight_error is not None:
             return 2
 
-    for step_id, hrs in runtime.headline_results.items():
+    for step_id, hrs in runtime.metric_results.items():
         for name, hr in hrs.items():
             if not hr.ok:
                 return 1

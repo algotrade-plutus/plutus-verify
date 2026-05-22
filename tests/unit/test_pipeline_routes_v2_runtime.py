@@ -52,7 +52,7 @@ def test_pipeline_uses_native_v2_runtime_when_manifest_present(tmp_path, monkeyp
     sentinel.image = "built-img"
     sentinel.data_tier_used = "code"
     sentinel.step_results = {}
-    sentinel.headline_results = {}
+    sentinel.metric_results = {}
     sentinel.reference_results = {}
     sentinel.notes = []
     fake_run_v2 = MagicMock(return_value=sentinel)

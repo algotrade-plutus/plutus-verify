@@ -161,7 +161,7 @@ MANIFEST_SCHEMA: dict[str, Any] = {
                 "required": ["step_id"],
                 "properties": {
                     "step_id": {"type": "string"},
-                    "headlines": {"type": "array", "items": _HEADLINE},
+                    "metrics": {"type": "array", "items": _HEADLINE},
                     "reference_outputs": {
                         "type": "array",
                         "items": _REFERENCE_OUTPUT,

@@ -408,7 +408,7 @@ def check_cmd(repo_path: Path, secrets_from_env: bool, data_tier: str) -> None:
         skip = f" (skipped: {sr.skipped_reason})" if sr.skipped_reason else ""
         pf = f" [preflight: {sr.preflight_error}]" if sr.preflight_error else ""
         click.echo(f"  {status} {sid}: exit={sr.exit_code}{skip}{pf}")
-    for step_id, hrs in res.runtime_result.headline_results.items():
+    for step_id, hrs in res.runtime_result.metric_results.items():
         for name, h in hrs.items():
             marker = "ok" if h.ok else "FAIL"
             click.echo(f"  {marker} {step_id}.{name}: actual={h.actual} expected={h.expected} {h.detail}")
@@ -430,18 +430,18 @@ def check_cmd(repo_path: Path, secrets_from_env: bool, data_tier: str) -> None:
     help="Don't copy step output files into .plutus/expected/.",
 )
 @click.option(
-    "--no-headlines",
+    "--no-metrics",
     is_flag=True,
     default=False,
-    help="Don't write expected.headlines[].value into manifest.yaml.",
+    help="Don't write expected.metrics[].value into manifest.yaml.",
 )
 def snapshot_cmd(
     repo_path: Path,
     no_run: bool,
     no_reference_outputs: bool,
-    no_headlines: bool,
+    no_metrics: bool,
 ) -> None:
-    """Capture step outputs into .plutus/expected/ and fill headline values."""
+    """Capture step outputs into .plutus/expected/ and fill metric values."""
     from plutus_verify.scaffold.snapshot import scaffold_snapshot
 
     if not no_run:
@@ -457,10 +457,10 @@ def snapshot_cmd(
         Path(repo_path),
         run_check_first=False,
         update_reference_outputs=not no_reference_outputs,
-        update_headline_values=not no_headlines,
+        update_metric_values=not no_metrics,
     )
     click.echo(f"  files copied: {res.files_copied}")
-    click.echo(f"  headlines updated: {res.headlines_updated}")
+    click.echo(f"  metrics updated: {res.metrics_updated}")
     for n in res.notes:
         click.echo(f"  {n}")
 

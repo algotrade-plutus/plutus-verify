@@ -4,7 +4,7 @@ from plutus_verify.spec.manifest import (
     DataSourceTiers,
     Env,
     ExpectedBlock,
-    Headline,
+    ExpectedMetric,
     Manifest,
     NineStepCoverage,
     ReferenceOutput,
@@ -67,8 +67,8 @@ def test_data_source_satisfies_multiple_steps():
     assert ds.satisfies == ("data_collection", "data_processing")
 
 
-def test_headline_uses_name_value_and_tolerance():
-    h = Headline(
+def test_metric_uses_name_value_and_tolerance():
+    h = ExpectedMetric(
         name="sharpe_ratio",
         value=0.85,
         tolerance=Tolerance(kind="relative", value=0.05),
@@ -80,8 +80,8 @@ def test_headline_uses_name_value_and_tolerance():
     assert h.display_name is None
 
 
-def test_headline_accepts_optional_display_name():
-    h = Headline(
+def test_metric_accepts_optional_display_name():
+    h = ExpectedMetric(
         name="sharpe_ratio",
         value=0.85,
         tolerance=Tolerance(kind="relative", value=0.05),

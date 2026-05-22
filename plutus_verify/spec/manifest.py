@@ -69,7 +69,7 @@ class Tolerance:
 
 
 @dataclass(frozen=True)
-class Headline:
+class ExpectedMetric:
     name: str
     value: float
     tolerance: Tolerance
@@ -86,7 +86,7 @@ class ReferenceOutput:
 @dataclass(frozen=True)
 class ExpectedBlock:
     step_id: str
-    headlines: tuple[Headline, ...] = ()
+    metrics: tuple[ExpectedMetric, ...] = ()
     reference_outputs: tuple[ReferenceOutput, ...] = ()
 
 

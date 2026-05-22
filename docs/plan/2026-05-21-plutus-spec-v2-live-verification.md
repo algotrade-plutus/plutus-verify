@@ -83,7 +83,7 @@ nothing was emitted until the call returned.
 
 **Modified:**
 - `plutus_verify/spec/runtime/orchestrator.py` — `repo_path.resolve()` at
-  entry; new `_run_step` branch for `artifact_check`; `_compare_headlines`
+  entry; new `_run_step` branch for `artifact_check`; `_compare_metrics`
   takes `step_results` and threads stdout into locators;
   `_locate_stdout_table` + `_locate_stdout_regex` added
 - `plutus_verify/spec/runtime/data_resolver.py` — `_common_parent_dir(layout)`
@@ -248,11 +248,11 @@ out/transfer-test/check5.log:
     ...
 ```
 
-6 of 6 in-sample headlines pass; 3 of 6 OOS headlines diverge ~25%. The
+6 of 6 in-sample metrics pass; 3 of 6 OOS metrics diverge ~25%. The
 divergence is a genuine reproducibility finding (Sharpe/Sortino/HPR drift
 while MDD matches exactly, suggesting risk-free or annualization mismatch
 between the README's claim and the script's current behavior), not a
-pipeline bug. The verifier behaves correctly: exit 1, headline-level
+pipeline bug. The verifier behaves correctly: exit 1, metric-level
 failure reasons in the output.
 
 Unit tests: 303 passing (+7 new for this plan).

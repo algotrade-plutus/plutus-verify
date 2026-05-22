@@ -1,6 +1,6 @@
 """Round-trip-preserving editor for `.plutus/manifest.yaml`.
 
-Used by `plutus snapshot` to update `expected.headlines[].value` entries
+Used by `plutus snapshot` to update `expected.metrics[].value` entries
 from the script-produced `.plutus/run/<step_id>/results.json`. Comments,
 blank lines, and key order in the author's manifest are preserved so the
 resulting `git diff` only shows the value changes.
@@ -18,15 +18,15 @@ class ManifestEditError(RuntimeError):
     """The manifest could not be safely edited."""
 
 
-def update_headline_values(
+def update_metric_values(
     manifest_path: Path,
     updates: dict[str, dict[str, float]],
 ) -> tuple[int, list[str]]:
-    """Update `expected.headlines[].value` entries in place.
+    """Update `expected.metrics[].value` entries in place.
 
     Args:
         manifest_path: Path to `.plutus/manifest.yaml`.
-        updates: {step_id: {headline_name: new_value}}.
+        updates: {step_id: {metric_name: new_value}}.
 
     Returns:
         (count_of_values_updated, list_of_warnings).
@@ -68,8 +68,8 @@ def update_headline_values(
     count = 0
     warnings: list[str] = []
 
-    for step_id, headline_updates in updates.items():
-        if not headline_updates:
+    for step_id, metric_updates in updates.items():
+        if not metric_updates:
             continue
         block = by_step.get(step_id)
         if block is None:
@@ -78,14 +78,14 @@ def update_headline_values(
                 "block in manifest — skipped"
             )
             continue
-        headlines = block.get("headlines") or []
-        headlines_by_name = {h.get("name"): h for h in headlines}
-        for name, new_value in headline_updates.items():
-            h = headlines_by_name.get(name)
+        metrics = block.get("metrics") or []
+        metrics_by_name = {h.get("name"): h for h in metrics}
+        for name, new_value in metric_updates.items():
+            h = metrics_by_name.get(name)
             if h is None:
                 warnings.append(
                     f"snapshot: metric '{name}' (step '{step_id}') has no "
-                    "matching headline declared in manifest — skipped"
+                    "matching metric declared in manifest — skipped"
                 )
                 continue
             h["value"] = new_value

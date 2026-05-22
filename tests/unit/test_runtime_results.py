@@ -182,7 +182,7 @@ def test_round_trip_via_sdk(tmp_path: Path):
     from plutus_verify.sdk import step
 
     with step("my_step", repo_path=tmp_path) as r:
-        r.headline("sharpe_ratio", 0.95, unit="ratio")
+        r.metric("sharpe_ratio", 0.95, unit="ratio")
 
     result = load_results(tmp_path, step_id="my_step")
 

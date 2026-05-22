@@ -984,7 +984,7 @@ git commit -m "feat(spec/runtime): reference-output comparators (json/byte/visua
 - Create: `plutus_verify/spec/runtime/orchestrator.py`
 - Test: `tests/unit/test_runtime_orchestrator.py`
 
-The orchestrator chains: build (gen Dockerfile, build image) → for each step (preflight inputs, skip if `satisfied_by_download`, run via `Runner`, preflight outputs) → for each `expected` block (compare headlines + reference_outputs) → emit a `V2RuntimeResult`.
+The orchestrator chains: build (gen Dockerfile, build image) → for each step (preflight inputs, skip if `satisfied_by_download`, run via `Runner`, preflight outputs) → for each `expected` block (compare metrics + reference_outputs) → emit a `V2RuntimeResult`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1021,7 +1021,7 @@ steps:
     outputs: ["out/metrics.json"]
 expected:
   - step_id: in_sample
-    headlines:
+    metrics:
       - name: sharpe
         value: 0.85
         locate: {kind: json_file, path: "out/metrics.json", jsonpath: "$.sharpe"}
@@ -1039,7 +1039,7 @@ def _stage_repo(tmp_path: Path):
     (tmp_path / "out" / "metrics.json").write_text('{"sharpe": 0.86}')
 
 
-def test_runtime_runs_all_steps_and_compares_headlines(tmp_path):
+def test_runtime_runs_all_steps_and_compares_metrics(tmp_path):
     _stage_repo(tmp_path)
     manifest = load_manifest_from_yaml_text(_YAML)
     image_builder = MagicMock(return_value="built-image-tag")
@@ -1061,7 +1061,7 @@ def test_runtime_runs_all_steps_and_compares_headlines(tmp_path):
     assert result.image == "built-image-tag"
     image_builder.assert_called_once()
     assert runner.run.call_count == 2  # data_collection + in_sample
-    assert result.headline_results["in_sample"]["sharpe"].ok
+    assert result.metric_results["in_sample"]["sharpe"].ok
 
 
 def test_runtime_skips_steps_satisfied_by_data_source(tmp_path):
@@ -1196,7 +1196,7 @@ class StepRuntimeResult:
 
 
 @dataclass
-class HeadlineResult:
+class ExpectedMetricResult:
     name: str
     ok: bool
     actual: Any
@@ -1209,7 +1209,7 @@ class V2RuntimeResult:
     image: str
     data_tier_used: str
     step_results: dict[str, StepRuntimeResult] = field(default_factory=dict)
-    headline_results: dict[str, dict[str, HeadlineResult]] = field(default_factory=dict)
+    metric_results: dict[str, dict[str, ExpectedMetricResult]] = field(default_factory=dict)
     reference_results: dict[str, list[CompareResult]] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
 
@@ -1257,7 +1257,7 @@ def run_v2_pipeline(
         result.step_results[step.id] = sr
 
     for er in manifest.expected:
-        result.headline_results[er.step_id] = _compare_headlines(er, repo_path)
+        result.metric_results[er.step_id] = _compare_metrics(er, repo_path)
         result.reference_results[er.step_id] = _compare_refs(
             er, repo_path, expected_root, vision_client
         )
@@ -1340,15 +1340,15 @@ def _run_step(
     return sr
 
 
-def _compare_headlines(er, repo_path: Path) -> dict[str, "HeadlineResult"]:
-    out: dict[str, HeadlineResult] = {}
-    for h in er.headlines:
+def _compare_metrics(er, repo_path: Path) -> dict[str, "ExpectedMetricResult"]:
+    out: dict[str, ExpectedMetricResult] = {}
+    for h in er.metrics:
         try:
             actual = _locate_value(h.locate, repo_path)
             ok, detail = _within_tolerance(actual, h.value, h.tolerance)
-            out[h.name] = HeadlineResult(name=h.name, ok=ok, actual=actual, expected=h.value, detail=detail)
+            out[h.name] = ExpectedMetricResult(name=h.name, ok=ok, actual=actual, expected=h.value, detail=detail)
         except Exception as exc:  # noqa: BLE001
-            out[h.name] = HeadlineResult(
+            out[h.name] = ExpectedMetricResult(
                 name=h.name, ok=False, actual=None, expected=h.value, detail=str(exc)
             )
     return out
@@ -1426,14 +1426,14 @@ Current state (Plan 1): pipeline detects `.plutus/manifest.yaml`, loads via spec
 ```python
 """Native v2 execution: build, run, compare directly from Manifest (no adapter)."""
 from plutus_verify.spec.runtime.orchestrator import (
-    HeadlineResult,
+    ExpectedMetricResult,
     StepRuntimeResult,
     V2RuntimeResult,
     run_v2_pipeline,
 )
 
 __all__ = [
-    "HeadlineResult",
+    "ExpectedMetricResult",
     "StepRuntimeResult",
     "V2RuntimeResult",
     "run_v2_pipeline",
@@ -1499,7 +1499,7 @@ def test_pipeline_uses_native_v2_runtime_when_manifest_present(tmp_path, monkeyp
     sentinel.image = "built-img"
     sentinel.data_tier_used = "code"
     sentinel.step_results = {}
-    sentinel.headline_results = {}
+    sentinel.metric_results = {}
     sentinel.reference_results = {}
     sentinel.notes = []
     fake_run_v2 = MagicMock(return_value=sentinel)
@@ -1623,8 +1623,8 @@ def test_v2_runtime_end_to_end(tmp_path):
     assert result.data_tier_used == "code"
     # 3 steps in fixture, all should have an entry in step_results
     assert set(result.step_results.keys()) == {"data_collection", "data_processing", "in_sample"}
-    # headline should pass (0.86 is within ±5% of 0.85)
-    assert result.headline_results["in_sample"]["sharpe_ratio"].ok
+    # metric should pass (0.86 is within ±5% of 0.85)
+    assert result.metric_results["in_sample"]["sharpe_ratio"].ok
 ```
 
 - [ ] **Step 2: Run, expect PASS**

@@ -20,7 +20,7 @@ steps:
     outputs: ["out/metrics.json"]
 expected:
   - step_id: in_sample
-    headlines:
+    metrics:
       - name: sharpe_ratio
         display_name: "Sharpe Ratio"
         value: 0.85
@@ -65,7 +65,7 @@ def test_adapter_maps_step_and_outputs_to_produces():
     assert s.produces == ("out/metrics.json",)
 
 
-def test_adapter_maps_headlines_to_expected_metrics():
+def test_adapter_maps_metrics_to_expected_metrics():
     m = load_manifest_from_yaml_text(_MIN)
     p = to_extracted_plan(m)
     assert len(p.expected_results) == 1
@@ -77,7 +77,7 @@ def test_adapter_maps_headlines_to_expected_metrics():
 
 
 def test_adapter_synthesizes_results_json_locate_for_v1_metric():
-    """v2 headlines have no locator, but v1 ExpectedMetric still requires one.
+    """v2 metrics have no locator, but v1 ExpectedMetric still requires one.
 
     The adapter synthesizes a json_file locate pointing at the SDK's
     canonical results.json so the audit-trail ExtractedPlan stays

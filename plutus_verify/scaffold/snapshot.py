@@ -9,7 +9,7 @@ from typing import Any, Callable, Optional
 from plutus_verify.scaffold.check import CheckResult, scaffold_check
 from plutus_verify.scaffold.manifest_edit import (
     ManifestEditError,
-    update_headline_values as _update_headline_values_in_yaml,
+    update_metric_values as _update_metric_values_in_yaml,
 )
 from plutus_verify.spec.loader import load_manifest
 from plutus_verify.spec.runtime.results import (
@@ -22,7 +22,7 @@ from plutus_verify.spec.runtime.results import (
 @dataclass
 class SnapshotResult:
     files_copied: int
-    headlines_updated: int = 0
+    metrics_updated: int = 0
     check_result: Optional[CheckResult] = None
     notes: list[str] = field(default_factory=list)
 
@@ -36,7 +36,7 @@ def scaffold_snapshot(
     vision_client: Optional[Any] = None,
     secrets: Optional[dict[str, str]] = None,
     update_reference_outputs: bool = True,
-    update_headline_values: bool = True,
+    update_metric_values: bool = True,
 ) -> SnapshotResult:
     manifest = load_manifest(repo_path)
 
@@ -101,17 +101,17 @@ def scaffold_snapshot(
                     shutil.copy2(src, dest)
                     files_copied += 1
 
-    headlines_updated = 0
-    if update_headline_values:
+    metrics_updated = 0
+    if update_metric_values:
         updates: dict[str, dict[str, float]] = {}
         for er in manifest.expected:
-            if not er.headlines:
+            if not er.metrics:
                 continue
             try:
                 results = load_results(repo_path, step_id=er.step_id)
             except MissingResultsError:
                 notes.append(
-                    f"step '{er.step_id}': no results.json — headlines not updated"
+                    f"step '{er.step_id}': no results.json — metrics not updated"
                 )
                 continue
             except MalformedResultsError as exc:
@@ -119,7 +119,7 @@ def scaffold_snapshot(
                     f"step '{er.step_id}': malformed results.json — {exc}"
                 )
                 continue
-            declared_names = {h.name for h in er.headlines}
+            declared_names = {h.name for h in er.metrics}
             step_updates = {
                 m.name: m.value for m in results.metrics if m.name in declared_names
             }
@@ -129,17 +129,17 @@ def scaffold_snapshot(
         if updates:
             manifest_path = repo_path / ".plutus" / "manifest.yaml"
             try:
-                count, edit_warnings = _update_headline_values_in_yaml(
+                count, edit_warnings = _update_metric_values_in_yaml(
                     manifest_path, updates
                 )
-                headlines_updated = count
+                metrics_updated = count
                 notes.extend(edit_warnings)
             except ManifestEditError as exc:
                 notes.append(f"manifest edit failed: {exc}")
 
     return SnapshotResult(
         files_copied=files_copied,
-        headlines_updated=headlines_updated,
+        metrics_updated=metrics_updated,
         check_result=check_result,
         notes=notes,
     )

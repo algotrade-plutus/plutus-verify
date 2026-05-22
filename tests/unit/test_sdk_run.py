@@ -25,8 +25,8 @@ def test_public_import_surface() -> None:
 
 def test_basic_write_emits_canonical_results(tmp_path: Path) -> None:
     with step("in_sample_backtest", repo_path=tmp_path) as r:
-        r.headline("sharpe_ratio", 0.9517, unit="ratio")
-        r.headline("maximum_drawdown", -0.20, unit="ratio")
+        r.metric("sharpe_ratio", 0.9517, unit="ratio")
+        r.metric("maximum_drawdown", -0.20, unit="ratio")
         r.artifact("equity_curve", "result/backtest/hpr.svg", kind="chart")
         r.artifact("drawdown_chart", "result/backtest/drawdown.svg")
         r.metadata(seed=2025)
@@ -54,7 +54,7 @@ def test_default_artifact_kind_is_chart(tmp_path: Path) -> None:
 
 def test_atomic_write_no_tmp_left_behind(tmp_path: Path) -> None:
     with step("s", repo_path=tmp_path) as r:
-        r.headline("m", 1.0)
+        r.metric("m", 1.0)
     out_dir = tmp_path / ".plutus" / "run" / "s"
     leftovers = [p for p in out_dir.iterdir() if p.name.endswith(".tmp")]
     assert leftovers == []
@@ -65,7 +65,7 @@ def test_exception_in_with_block_skips_write(tmp_path: Path) -> None:
     assert not path.exists()
     with pytest.raises(RuntimeError):
         with step("s", repo_path=tmp_path) as r:
-            r.headline("m", 1.0)
+            r.metric("m", 1.0)
             raise RuntimeError("user code blew up")
     assert not path.exists()
 
@@ -73,8 +73,8 @@ def test_exception_in_with_block_skips_write(tmp_path: Path) -> None:
 def test_duplicate_metric_name_raises(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
         with step("s", repo_path=tmp_path) as r:
-            r.headline("m", 1.0)
-            r.headline("m", 2.0)
+            r.metric("m", 1.0)
+            r.metric("m", 2.0)
 
 
 def test_duplicate_artifact_name_raises(tmp_path: Path) -> None:
@@ -88,13 +88,13 @@ def test_duplicate_artifact_name_raises(tmp_path: Path) -> None:
 def test_non_finite_metric_value_raises(tmp_path: Path, bad_value: float) -> None:
     with pytest.raises(ValueError):
         with step("s", repo_path=tmp_path) as r:
-            r.headline("m", bad_value)
+            r.metric("m", bad_value)
 
 
 def test_bad_unit_raises(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
         with step("s", repo_path=tmp_path) as r:
-            r.headline("m", 1.0, unit="percent")
+            r.metric("m", 1.0, unit="percent")
 
 
 def test_bad_artifact_kind_raises(tmp_path: Path) -> None:
@@ -107,7 +107,7 @@ def test_bad_artifact_kind_raises(tmp_path: Path) -> None:
 def test_non_snake_case_metric_name_raises(tmp_path: Path, bad_name: str) -> None:
     with pytest.raises(ValueError):
         with step("s", repo_path=tmp_path) as r:
-            r.headline(bad_name, 1.0)
+            r.metric(bad_name, 1.0)
 
 
 @pytest.mark.parametrize("bad_name", ["EquityCurve", "equity-curve", "9chart"])
@@ -235,7 +235,7 @@ def test_step_uses_cwd_when_no_dot_plutus_found(tmp_path: Path, monkeypatch: pyt
 def test_flush_can_be_called_explicitly(tmp_path: Path) -> None:
     r = Run("s", repo_path=tmp_path)
     r.__enter__()
-    r.headline("m", 1.0)
+    r.metric("m", 1.0)
     r.flush()
     assert _results_path(tmp_path, "s").exists()
     # __exit__ on success should be a no-op or re-flush idempotently; either
@@ -246,7 +246,7 @@ def test_flush_can_be_called_explicitly(tmp_path: Path) -> None:
 
 def test_metric_value_accepts_ints(tmp_path: Path) -> None:
     with step("s", repo_path=tmp_path) as r:
-        r.headline("trade_count", 42, unit="count")
+        r.metric("trade_count", 42, unit="count")
     payload = json.loads(_results_path(tmp_path, "s").read_text())
     assert payload["metrics"][0]["value"] == 42
 

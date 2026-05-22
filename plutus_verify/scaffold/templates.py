@@ -53,8 +53,8 @@ steps:
 
 expected:
   - step_id: in_sample
-    headlines:
-      # Headlines identify metrics by snake_case `name`. The v2 runtime reads
+    metrics:
+      # ExpectedMetrics identify metrics by snake_case `name`. The v2 runtime reads
       # values from `.plutus/run/<step_id>/results.json` (written by your
       # script via the SDK). See `.plutus/example_script.py` for a copy-paste
       # template. `display_name` is optional and used for human-readable
@@ -86,7 +86,7 @@ backtest produced.
 
 The `plutus check` runtime reads `.plutus/run/<step_id>/results.json` and
 compares each metric (by snake_case `name`) against the manifest's
-`expected.headlines`. Metrics use canonical ratio decimals — write 0.171
+`expected.metrics`. Metrics use canonical ratio decimals — write 0.171
 (not 17.1) for a 17.1% return.
 """
 from __future__ import annotations
@@ -107,11 +107,11 @@ def run_backtest() -> None:
     # stale results behind).
     with pv.step("in_sample") as r:
         # Numeric metrics — must use snake_case names matching manifest's
-        # expected.headlines[].name. Units: ratio | count | currency_usd | seconds.
+        # expected.metrics[].name. Units: ratio | count | currency_usd | seconds.
         # `ratio` covers Sharpe, returns, drawdowns — always decimals, never percent.
-        r.headline("sharpe_ratio",     sharpe_ratio,     unit="ratio")
-        r.headline("maximum_drawdown", maximum_drawdown, unit="ratio")
-        r.headline("annual_return",    annual_return,    unit="ratio")
+        r.metric("sharpe_ratio",     sharpe_ratio,     unit="ratio")
+        r.metric("maximum_drawdown", maximum_drawdown, unit="ratio")
+        r.metric("annual_return",    annual_return,    unit="ratio")
 
         # Artifacts — files your script produced. Path is repo-relative.
         # Kinds: chart | csv | json | image | other.

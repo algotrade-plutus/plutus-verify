@@ -35,7 +35,7 @@ def test_v2_runtime_end_to_end(tmp_path):
     # Pre-write the results.json an SDK-instrumented script would have produced
     # for the in_sample step (manifest expects sharpe_ratio=0.85, rel tol 5%).
     with pv_step("in_sample", repo_path=work) as r:
-        r.headline("sharpe_ratio", 0.86, unit="ratio")
+        r.metric("sharpe_ratio", 0.86, unit="ratio")
 
     result = run_v2_pipeline(
         manifest,
@@ -53,8 +53,8 @@ def test_v2_runtime_end_to_end(tmp_path):
     assert result.data_tier_used == "raw"
     # 3 steps in fixture, all should have an entry in step_results
     assert set(result.step_results.keys()) == {"data_collection", "data_processing", "in_sample"}
-    # Headlines are now compared by reading results.json by metric name.
-    hr = result.headline_results["in_sample"]["sharpe_ratio"]
+    # ExpectedMetrics are now compared by reading results.json by metric name.
+    hr = result.metric_results["in_sample"]["sharpe_ratio"]
     assert hr.ok is True
     assert hr.actual == 0.86
     assert hr.expected == 0.85

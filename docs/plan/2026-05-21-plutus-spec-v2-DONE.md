@@ -35,10 +35,10 @@ Plutus repo:
   with real SDK calls inside the container — same pass pattern as Plan 6 / Task
   7 (6/6 in-sample, 3/6 OOS), confirming the SDK install path is correct and
   is not a regression vector.
-- **Plan 8** — [snapshot --headlines](2026-05-22-plutus-snapshot-headlines.md):
+- **Plan 8** — [snapshot --metrics](2026-05-22-plutus-snapshot-metrics.md):
   `plutus snapshot` now extracts metric values from
   `.plutus/run/<step_id>/results.json` and writes them into
-  `expected.headlines[].value` via a ruamel.yaml round-trip editor that
+  `expected.metrics[].value` via a ruamel.yaml round-trip editor that
   preserves comments, indentation, and key order. Author workflow becomes
   *write skeleton → snapshot → review `git diff manifest.yaml` → commit*; the
   commit IS the verification claim. Integration-verified against

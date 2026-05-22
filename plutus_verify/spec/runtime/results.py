@@ -36,10 +36,10 @@ class MalformedResultsError(ResultsError):
 
 
 class MetricNotProducedError(ResultsError):
-    """An expected headline metric was not present in results.json.
+    """An expected metric was not present in results.json.
 
     Not raised by ``load_results``; the orchestrator raises this in Task 4
-    when an expected headline name has no matching metric in the loaded
+    when an expected metric name has no matching metric in the loaded
     ``ResultsFile``.
     """
 

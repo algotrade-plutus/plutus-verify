@@ -35,7 +35,7 @@ steps:
     outputs: ["out/metrics.json"]
 expected:
   - step_id: in_sample
-    headlines:
+    metrics:
       - name: sharpe_ratio
         display_name: "Sharpe Ratio"
         value: 0.85

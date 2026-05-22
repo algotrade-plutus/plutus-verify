@@ -1,4 +1,4 @@
-"""Tests for `plutus_verify.scaffold.manifest_edit.update_headline_values`."""
+"""Tests for `plutus_verify.scaffold.manifest_edit.update_metric_values`."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -7,7 +7,7 @@ import pytest
 
 from plutus_verify.scaffold.manifest_edit import (
     ManifestEditError,
-    update_headline_values,
+    update_metric_values,
 )
 
 
@@ -26,8 +26,8 @@ steps:
 
 expected:
   - step_id: in_sample
-    # Headlines for in-sample run
-    headlines:
+    # ExpectedMetrics for in-sample run
+    metrics:
       - name: sharpe_ratio
         display_name: Sharpe Ratio
         value: 1.23
@@ -44,7 +44,7 @@ def _write(tmp_path: Path, text: str) -> Path:
 def test_round_trip_preserves_comments_and_blank_lines(tmp_path: Path) -> None:
     path = _write(tmp_path, MANIFEST_WITH_COMMENTS)
 
-    count, warnings = update_headline_values(
+    count, warnings = update_metric_values(
         path, {"in_sample": {"sharpe_ratio": 0.99}}
     )
 
@@ -54,7 +54,7 @@ def test_round_trip_preserves_comments_and_blank_lines(tmp_path: Path) -> None:
     assert "# Hand-cleaned manifest" in text
     assert "# Author: dan" in text
     assert "# Steps section" in text
-    assert "# Headlines for in-sample run" in text
+    assert "# ExpectedMetrics for in-sample run" in text
     # blank lines preserved
     assert "\n\nversion: 2" in text or "\n\nidentity:" in text
     # new value present, old value gone
@@ -66,7 +66,7 @@ def test_overwrites_value_only(tmp_path: Path) -> None:
     manifest = """\
 expected:
   - step_id: in_sample
-    headlines:
+    metrics:
       - name: sharpe_ratio
         display_name: Sharpe Ratio
         value: 1.23
@@ -77,7 +77,7 @@ expected:
         tolerance: 0.1
 """
     path = _write(tmp_path, manifest)
-    count, warnings = update_headline_values(
+    count, warnings = update_metric_values(
         path, {"in_sample": {"sharpe_ratio": 2.5}}
     )
     assert count == 1
@@ -101,7 +101,7 @@ def test_unknown_step_id_warning(tmp_path: Path) -> None:
     before_bytes = path.read_bytes()
     before_mtime = path.stat().st_mtime_ns
 
-    count, warnings = update_headline_values(
+    count, warnings = update_metric_values(
         path, {"out_of_sample": {"sharpe_ratio": 0.5}}
     )
 
@@ -112,12 +112,12 @@ def test_unknown_step_id_warning(tmp_path: Path) -> None:
     assert path.stat().st_mtime_ns == before_mtime
 
 
-def test_unknown_headline_name_warning(tmp_path: Path) -> None:
+def test_unknown_metric_name_warning(tmp_path: Path) -> None:
     path = _write(tmp_path, MANIFEST_WITH_COMMENTS)
     before_bytes = path.read_bytes()
     before_mtime = path.stat().st_mtime_ns
 
-    count, warnings = update_headline_values(
+    count, warnings = update_metric_values(
         path, {"in_sample": {"sortino_ratio": 1.3}}
     )
 
@@ -133,7 +133,7 @@ def test_empty_updates_is_noop(tmp_path: Path) -> None:
     before_bytes = path.read_bytes()
     before_mtime = path.stat().st_mtime_ns
 
-    count, warnings = update_headline_values(path, {})
+    count, warnings = update_metric_values(path, {})
 
     assert count == 0
     assert warnings == []
@@ -144,7 +144,7 @@ def test_empty_updates_is_noop(tmp_path: Path) -> None:
 def test_empty_per_step_dict_is_skipped(tmp_path: Path) -> None:
     path = _write(tmp_path, MANIFEST_WITH_COMMENTS)
 
-    count, warnings = update_headline_values(path, {"in_sample": {}})
+    count, warnings = update_metric_values(path, {"in_sample": {}})
 
     assert count == 0
     assert warnings == []
@@ -159,7 +159,7 @@ identity:
     path = _write(tmp_path, manifest)
 
     with pytest.raises(ManifestEditError) as exc_info:
-        update_headline_values(path, {"in_sample": {"sharpe_ratio": 1.0}})
+        update_metric_values(path, {"in_sample": {"sharpe_ratio": 1.0}})
 
     assert "expected" in str(exc_info.value)
 
@@ -168,7 +168,7 @@ def test_raises_on_invalid_yaml(tmp_path: Path) -> None:
     path = _write(tmp_path, "not: valid: yaml: [")
 
     with pytest.raises(ManifestEditError) as exc_info:
-        update_headline_values(path, {"in_sample": {"sharpe_ratio": 1.0}})
+        update_metric_values(path, {"in_sample": {"sharpe_ratio": 1.0}})
 
     assert "could not parse" in str(exc_info.value)
 
@@ -177,13 +177,13 @@ def test_raises_on_unreadable_file(tmp_path: Path) -> None:
     missing = tmp_path / "does_not_exist.yaml"
 
     with pytest.raises(ManifestEditError):
-        update_headline_values(missing, {"in_sample": {"sharpe_ratio": 1.0}})
+        update_metric_values(missing, {"in_sample": {"sharpe_ratio": 1.0}})
 
 
 def test_value_is_float_in_yaml_output(tmp_path: Path) -> None:
     path = _write(tmp_path, MANIFEST_WITH_COMMENTS)
 
-    count, _ = update_headline_values(
+    count, _ = update_metric_values(
         path, {"in_sample": {"sharpe_ratio": 0.123456789}}
     )
 
@@ -196,20 +196,20 @@ def test_does_not_touch_other_blocks(tmp_path: Path) -> None:
     manifest = """\
 expected:
   - step_id: in_sample
-    headlines:
+    metrics:
       - name: sharpe_ratio
         display_name: Sharpe Ratio
         value: 1.0
         tolerance: 0.05
   - step_id: out_of_sample
-    headlines:
+    metrics:
       - name: sharpe_ratio
         display_name: Sharpe Ratio (OOS)
         value: 0.8
         tolerance: 0.05
 """
     path = _write(tmp_path, manifest)
-    count, warnings = update_headline_values(
+    count, warnings = update_metric_values(
         path, {"in_sample": {"sharpe_ratio": 1.5}}
     )
 
@@ -229,7 +229,7 @@ def test_count_reflects_actual_updates(tmp_path: Path) -> None:
     manifest = """\
 expected:
   - step_id: in_sample
-    headlines:
+    metrics:
       - name: sharpe_ratio
         display_name: Sharpe Ratio
         value: 1.0
@@ -239,14 +239,14 @@ expected:
         value: -0.1
         tolerance: 0.05
   - step_id: out_of_sample
-    headlines:
+    metrics:
       - name: sharpe_ratio
         display_name: Sharpe Ratio (OOS)
         value: 0.8
         tolerance: 0.05
 """
     path = _write(tmp_path, manifest)
-    count, warnings = update_headline_values(
+    count, warnings = update_metric_values(
         path,
         {
             "in_sample": {"sharpe_ratio": 1.5, "max_drawdown": -0.2},

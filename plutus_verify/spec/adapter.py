@@ -158,7 +158,7 @@ def to_extracted_plan(m: Manifest) -> "ExtractedPlan":
     # Process expected results
     def _build_expected(er):
         def _synthetic_locate(h_name: str) -> "PlanLocate":
-            # v2 headlines no longer carry a locator; the SDK writes a canonical
+            # v2 metrics no longer carry a locator; the SDK writes a canonical
             # results.json (Task 1) and the v2 runtime reads it natively (Task 2 + 4).
             # The v1 ExpectedMetric still requires a locate field, so we synthesize
             # one that points at the SDK's results.json. This locator is never
@@ -177,7 +177,7 @@ def to_extracted_plan(m: Manifest) -> "ExtractedPlan":
                 locate=_synthetic_locate(h.name),
                 tolerance=PlanTolerance(kind=h.tolerance.kind, value=h.tolerance.value),
             )
-            for h in er.headlines
+            for h in er.metrics
         )
 
         chart_refs = []

@@ -18,7 +18,7 @@ from plutus_verify.spec.manifest import (
     DataSourceTiers,
     Env,
     ExpectedBlock,
-    Headline,
+    ExpectedMetric,
     Manifest,
     NineStepCoverage,
     ReferenceOutput,
@@ -137,8 +137,8 @@ def _build_step(d: dict[str, Any]) -> Step:
 
 
 def _build_expected(d: dict[str, Any]) -> ExpectedBlock:
-    headlines = tuple(
-        Headline(
+    metrics = tuple(
+        ExpectedMetric(
             name=h["name"],
             value=h["value"],
             display_name=h.get("display_name"),
@@ -146,7 +146,7 @@ def _build_expected(d: dict[str, Any]) -> ExpectedBlock:
                 kind=h["tolerance"]["kind"], value=h["tolerance"]["value"]
             ),
         )
-        for h in d.get("headlines", [])
+        for h in d.get("metrics", [])
     )
     refs = tuple(
         ReferenceOutput(
@@ -156,4 +156,4 @@ def _build_expected(d: dict[str, Any]) -> ExpectedBlock:
         )
         for r in d.get("reference_outputs", [])
     )
-    return ExpectedBlock(step_id=d["step_id"], headlines=headlines, reference_outputs=refs)
+    return ExpectedBlock(step_id=d["step_id"], metrics=metrics, reference_outputs=refs)

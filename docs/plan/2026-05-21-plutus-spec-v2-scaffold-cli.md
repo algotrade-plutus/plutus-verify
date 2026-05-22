@@ -164,7 +164,7 @@ steps:
 
 expected:
   - step_id: in_sample
-    headlines:
+    metrics:
       - name: sharpe_ratio
         value: 0.0           # TODO: replace with the value you got
         locate: {kind: json_file, path: "out/metrics.json", jsonpath: "$.sharpe"}
@@ -414,7 +414,7 @@ def test_check_missing_manifest_raises(tmp_path: Path):
 
 
 def test_check_exit_code_zero_when_all_pass(tmp_path: Path):
-    """All steps exit 0, headlines pass → exit 0."""
+    """All steps exit 0, metrics pass → exit 0."""
     scaffold_init(tmp_path)
     (tmp_path / "out").mkdir(exist_ok=True)
     (tmp_path / "out" / "metrics.json").write_text('{"sharpe": 0.0}')
@@ -499,7 +499,7 @@ def scaffold_check(
 
 
 def _exit_code(manifest, runtime: V2RuntimeResult) -> int:
-    """0 = all required steps + headlines pass; 1 = soft fail; 2 = required hard fail."""
+    """0 = all required steps + metrics pass; 1 = soft fail; 2 = required hard fail."""
     required_ids = {s.id for s in manifest.steps if s.required}
 
     for sid, sr in runtime.step_results.items():
@@ -508,7 +508,7 @@ def _exit_code(manifest, runtime: V2RuntimeResult) -> int:
         if sid in required_ids and sr.preflight_error is not None:
             return 2
 
-    for step_id, hrs in runtime.headline_results.items():
+    for step_id, hrs in runtime.metric_results.items():
         for name, hr in hrs.items():
             if not hr.ok:
                 return 1

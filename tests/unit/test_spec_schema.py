@@ -78,12 +78,12 @@ def test_schema_accepts_data_sources_with_satisfies():
     Draft202012Validator(MANIFEST_SCHEMA).validate(d)
 
 
-def test_schema_accepts_expected_with_headline_and_reference_output():
+def test_schema_accepts_expected_with_metric_and_reference_output():
     d = _minimal_valid_dict()
     d["expected"].append(
         {
             "step_id": "in_sample",
-            "headlines": [
+            "metrics": [
                 {
                     "name": "sharpe_ratio",
                     "display_name": "Sharpe Ratio",
@@ -103,12 +103,12 @@ def test_schema_accepts_expected_with_headline_and_reference_output():
     Draft202012Validator(MANIFEST_SCHEMA).validate(d)
 
 
-def test_schema_rejects_locate_property_on_headline():
+def test_schema_rejects_locate_property_on_metric():
     d = _minimal_valid_dict()
     d["expected"].append(
         {
             "step_id": "in_sample",
-            "headlines": [
+            "metrics": [
                 {
                     "name": "sharpe_ratio",
                     "value": 0.85,
@@ -120,15 +120,15 @@ def test_schema_rejects_locate_property_on_headline():
     )
     v = Draft202012Validator(MANIFEST_SCHEMA)
     errs = list(v.iter_errors(d))
-    assert errs, "expected schema to reject `locate` on headline (additionalProperties=False)"
+    assert errs, "expected schema to reject `locate` on metric (additionalProperties=False)"
 
 
-def test_schema_rejects_non_snake_case_headline_name():
+def test_schema_rejects_non_snake_case_metric_name():
     d = _minimal_valid_dict()
     d["expected"].append(
         {
             "step_id": "in_sample",
-            "headlines": [
+            "metrics": [
                 {
                     "name": "Sharpe Ratio",  # spaces + caps → rejected
                     "value": 0.85,
@@ -139,7 +139,7 @@ def test_schema_rejects_non_snake_case_headline_name():
     )
     v = Draft202012Validator(MANIFEST_SCHEMA)
     errs = list(v.iter_errors(d))
-    assert errs, "expected schema to reject non-snake_case headline name"
+    assert errs, "expected schema to reject non-snake_case metric name"
 
 
 def test_schema_rejects_unknown_compare_kind():
@@ -147,7 +147,7 @@ def test_schema_rejects_unknown_compare_kind():
     d["expected"].append(
         {
             "step_id": "in_sample",
-            "headlines": [],
+            "metrics": [],
             "reference_outputs": [
                 {"path": "out/x.json", "compare": "fuzzy_magic"}
             ],

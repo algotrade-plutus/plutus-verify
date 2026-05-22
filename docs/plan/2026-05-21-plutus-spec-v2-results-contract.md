@@ -5,7 +5,7 @@
 **Goal:** Standardize what reproducible scripts *produce* so the verifier
 never has to parse stdout, regex over markdown, or guess units. Every step
 emits a canonical `.plutus/run/<step_id>/results.json` with strict schema
-(ratio-decimals only, no percent). The manifest's `expected.headlines` becomes
+(ratio-decimals only, no percent). The manifest's `expected.metrics` becomes
 a name → value+tolerance lookup. All locator vocabulary
 (`stdout_table`, `stdout_regex`, `json_file`, `file_regex`) is removed.
 
@@ -78,9 +78,9 @@ context). User explicitly chose each one.
    `results.json`. The author trade-off was explicit: sharp upgrade pain
    in exchange for a smaller code surface and a simpler mental model.
 6. **`plutus transfer` produces a TODO file alongside the manifest draft.**
-   Since the v1 LLM extractor can't predict which `pv.headline(...)` calls
+   Since the v1 LLM extractor can't predict which `pv.metric(...)` calls
    to add where, the transfer tool now writes a companion
-   `instrument_TODO.md` listing the headlines the LLM inferred from the
+   `instrument_TODO.md` listing the metrics the LLM inferred from the
    README. The human adds the SDK calls.
 
 ---
@@ -92,7 +92,7 @@ context). User explicitly chose each one.
 - `__init__.py` — re-exports `step`, expose as `plutus_verify.sdk.step` and
   via top-level `plutus_verify.step` for the `import plutus_verify as pv;
   with pv.step(...)` ergonomic
-- `run.py` — `Run` class (context manager + headline/artifact/metadata
+- `run.py` — `Run` class (context manager + metric/artifact/metadata
   collectors + `flush()`); `step(step_id, *, repo_path=Path.cwd())` factory
 - `schema.py` — `RESULTS_SCHEMA` (JSON Schema for results.json) + canonical
   enums (`UNIT_KINDS`, `ARTIFACT_KINDS`)
@@ -106,42 +106,42 @@ context). User explicitly chose each one.
 **Modified — `plutus_verify/spec/manifest.py`:**
 
 - Remove `Locate` dataclass entirely
-- `Headline` collapses to `{name: str, value: float, tolerance: Tolerance,
+- `ExpectedMetric` collapses to `{name: str, value: float, tolerance: Tolerance,
   display_name: str | None}` — no `locate` field
 - Optional `display_name` is for human reports only; matching is always
   by `name` (snake_case)
 
 **Modified — `plutus_verify/spec/schema.py`:**
 
-- Remove `_LOCATE` and the `locate` property from headline schema
-- Add `display_name` (optional, string) to headline schema
+- Remove `_LOCATE` and the `locate` property from metric schema
+- Add `display_name` (optional, string) to metric schema
 
 **Modified — `plutus_verify/spec/runtime/orchestrator.py`:**
 
 - Delete `_locate_value`, `_locate_stdout_table`, `_locate_stdout_regex`
   (and the JSON-file/file-regex variants if they exist)
 - Delete `_TABLE_ROW_RE`
-- `_compare_headlines(er, repo_path, step_results)` rewritten:
+- `_compare_metrics(er, repo_path, step_results)` rewritten:
 
   ```python
-  def _compare_headlines(er, repo_path, step_results):
+  def _compare_metrics(er, repo_path, step_results):
       try:
           results = load_results(repo_path, er.step_id)
       except MissingResultsError as exc:
-          return {h.name: HeadlineResult(name=h.name, ok=False, actual=None,
+          return {h.name: ExpectedMetricResult(name=h.name, ok=False, actual=None,
                                           expected=h.value, detail=str(exc))
-                  for h in er.headlines}
+                  for h in er.metrics}
       metrics_by_name = {m.name: m for m in results.metrics}
       out = {}
-      for h in er.headlines:
+      for h in er.metrics:
           m = metrics_by_name.get(h.name)
           if m is None:
-              out[h.name] = HeadlineResult(name=h.name, ok=False, actual=None,
+              out[h.name] = ExpectedMetricResult(name=h.name, ok=False, actual=None,
                                             expected=h.value,
                                             detail=f"metric '{h.name}' not produced")
               continue
           ok, detail = _within_tolerance(m.value, h.value, h.tolerance)
-          out[h.name] = HeadlineResult(name=h.name, ok=ok, actual=m.value,
+          out[h.name] = ExpectedMetricResult(name=h.name, ok=ok, actual=m.value,
                                         expected=h.value, detail=detail)
       return out
   ```
@@ -149,9 +149,9 @@ context). User explicitly chose each one.
 **Modified — `plutus_verify/scaffold/extract_to_v2.py`:**
 
 - Drop locator emission from `to_v2_manifest_yaml`
-- Emit headlines with `name + value + tolerance` only; no `locate:` block
-- Generate companion `instrument_TODO.md` listing headlines that the human
-  must wire `pv.headline(...)` calls for
+- Emit metrics with `name + value + tolerance` only; no `locate:` block
+- Generate companion `instrument_TODO.md` listing metrics that the human
+  must wire `pv.metric(...)` calls for
 
 **Modified — `plutus_verify/scaffold/transfer.py`:**
 
@@ -165,7 +165,7 @@ context). User explicitly chose each one.
   percent unit, rejects missing required fields
 - `test_runtime_results.py` — `load_results`, error types
 - `test_runtime_orchestrator_results.py` — name-lookup comparison,
-  missing results.json → headline failures, missing metric → headline
+  missing results.json → metric failures, missing metric → metric
   failure
 - `test_extract_to_v2_no_locators.py` — emitted YAML has no `locate:`
 
@@ -236,11 +236,11 @@ import plutus_verify as pv
 # inside backtesting.py
 with pv.step("in_sample_backtest") as r:
     # ... existing backtest code computes sharpe, sortino, mdd, hpr, ... ...
-    r.headline("sharpe_ratio",     sharpe,   unit="ratio")
-    r.headline("sortino_ratio",    sortino,  unit="ratio")
-    r.headline("maximum_drawdown", mdd,      unit="ratio")
-    r.headline("hpr",              hpr,      unit="ratio")
-    r.headline("annual_return",    ann_ret,  unit="ratio")
+    r.metric("sharpe_ratio",     sharpe,   unit="ratio")
+    r.metric("sortino_ratio",    sortino,  unit="ratio")
+    r.metric("maximum_drawdown", mdd,      unit="ratio")
+    r.metric("hpr",              hpr,      unit="ratio")
+    r.metric("annual_return",    ann_ret,  unit="ratio")
     r.artifact("equity_curve",   "result/backtest/hpr.svg",      kind="chart")
     r.artifact("drawdown_chart", "result/backtest/drawdown.svg", kind="chart")
     r.metadata(seed=2025)
@@ -253,7 +253,7 @@ with pv.step("in_sample_backtest") as r:
   context manager factory. `repo_path` defaults to the script's `cwd()`
   resolved upward to the nearest `.plutus/` directory; explicit override
   is supported for tests and ad-hoc invocation.
-- `Run.headline(name: str, value: float, *, unit: str = "ratio") -> None` —
+- `Run.metric(name: str, value: float, *, unit: str = "ratio") -> None` —
   raises `DuplicateMetricError` on collision, `ValueError` on non-finite
   value or unsupported unit.
 - `Run.artifact(name: str, path: str | Path, *, kind: str = "chart") -> None` —
@@ -279,7 +279,7 @@ half-written file.
 ```yaml
 expected:
   - step_id: in_sample_backtest
-    headlines:
+    metrics:
       - name: Sharpe Ratio
         value: 0.9516
         locate: {kind: stdout_regex, pattern: "Sharpe ratio:\\s*([-\\d.]+)"}
@@ -295,7 +295,7 @@ expected:
 ```yaml
 expected:
   - step_id: in_sample_backtest
-    headlines:
+    metrics:
       - name: sharpe_ratio
         display_name: "Sharpe Ratio"   # optional, for human reports
         value: 0.9516
@@ -306,7 +306,7 @@ expected:
         tolerance: {kind: relative, value: 0.05}
 ```
 
-Raw line count is similar, but the headline no longer carries a regex
+Raw line count is similar, but the metric no longer carries a regex
 pattern that has to mirror script output verbatim. The mental model
 collapses to "what metric do I claim, to what value, with what
 tolerance" — three fields. Authoring errors (wrong regex, wrong column
@@ -325,7 +325,7 @@ index, wrong unit) become impossible by construction.
      c. Preflight outputs (Plan 2)
 4. For each expected block:
      a. load_results(repo_path, step_id)                                    ◄── NEW
-     b. for each headline: lookup metric by name → compare tolerance         ◄── NEW
+     b. for each metric: lookup metric by name → compare tolerance         ◄── NEW
      c. for each reference_output: compare against .plutus/expected/         (unchanged)
 5. Emit report
 ```
@@ -341,7 +341,7 @@ doesn't run regex. The orchestrator's locator code is gone.
 
 ```
 .plutus/manifest.yaml.draft        # draft manifest with TODO markers (existing)
-.plutus/instrument_TODO.md         # NEW — headlines the human must instrument
+.plutus/instrument_TODO.md         # NEW — metrics the human must instrument
 ```
 
 `instrument_TODO.md` contents (template):
@@ -360,8 +360,8 @@ Add at the end of the script:
 import plutus_verify as pv
 
 with pv.step("in_sample_backtest") as r:
-    r.headline("sharpe_ratio",     sharpe,   unit="ratio")
-    r.headline("sortino_ratio",    sortino,  unit="ratio")
+    r.metric("sharpe_ratio",     sharpe,   unit="ratio")
+    r.metric("sortino_ratio",    sortino,  unit="ratio")
     # ... full list from README ...
 ```
 
@@ -369,7 +369,7 @@ with pv.step("in_sample_backtest") as r:
 ...
 ```
 
-The headlines list in `instrument_TODO.md` is generated from the LLM's
+The metrics list in `instrument_TODO.md` is generated from the LLM's
 extracted metrics. The human can copy-paste the suggested code and adjust
 variable names to match their scripts.
 
@@ -385,9 +385,9 @@ rewrite, schema. Locator tests deleted (~15 tests removed).
 1. Add `pv.step(...)` blocks to `backtesting.py` and `evaluation.py`
 2. Update the hand-cleaned manifest at
    `out/transfer-test/ProtoMarketMaker/.plutus/manifest.yaml` to remove
-   `locate:` from headlines, keep names as snake_case
+   `locate:` from metrics, keep names as snake_case
 3. Run `plutus check out/transfer-test/ProtoMarketMaker`
-4. Expected: 6/6 in-sample headlines pass; 3/6 OOS headlines pass — same
+4. Expected: 6/6 in-sample metrics pass; 3/6 OOS metrics pass — same
    pass/fail pattern as Plan 5's verification (since the underlying
    reproducibility problem is unchanged). Exit code 1 (verdict, not
    pipeline bug).
@@ -407,7 +407,7 @@ ones are removed and SDK/results tests are added. Net test count likely
   start from the LLM-generated draft + the new `instrument_TODO.md`.
 - **A `plutus.metrics` canonical implementation library.** Future:
   `plutus.metrics.sharpe(returns)` returns a value and auto-registers it
-  as a headline. Out of scope for this plan.
+  as a metric. Out of scope for this plan.
 - **GPU support, S3 downloader, `plutus render-readme`** — these were
   deferred from earlier plans and remain deferred.
 
@@ -429,7 +429,7 @@ when this design is approved. Roughly:
 5. **Task 5** — Update `plutus init` skeleton template: example with
    `pv.step(...)` in a placeholder script.
 6. **Task 6** — `plutus transfer` reverse adapter: emit no-locator
-   headlines + `instrument_TODO.md`. TDD.
+   metrics + `instrument_TODO.md`. TDD.
 7. **Task 7** — End-to-end integration: re-instrument ProtoMarketMaker;
    re-verify; commit golden manifest + golden results.json under
    `out/transfer-test/`.

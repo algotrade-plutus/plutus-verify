@@ -16,7 +16,7 @@ Plan 6 stood up the SDK and the file contract. Task 7 verified the contract by h
 
 > SDK install path inside the generated Docker image — today author scripts must either hand-roll the results.json write or pip install plutus_verify via requirements.txt.
 
-For authors to use the ergonomic SDK (`with pv.step(...) as r: r.headline(...)`), the SDK has to be importable inside the container. The verifier knows its scripts will use the SDK, so it should ensure the SDK is there. Author requirements.txt stays clean.
+For authors to use the ergonomic SDK (`with pv.step(...) as r: r.metric(...)`), the SDK has to be importable inside the container. The verifier knows its scripts will use the SDK, so it should ensure the SDK is there. Author requirements.txt stays clean.
 
 A second prerequisite for downstream adoption: `plutus-verify` must be a real, installable package — proper metadata, README, license, classifiers. This plan brings the project to publish-ready (without publishing yet) and uses a built wheel locally in the meantime.
 
@@ -183,12 +183,12 @@ Sub-steps:
   import plutus_verify as pv
 
   with pv.step("in_sample_backtest") as r:
-      r.headline("sharpe_ratio",     float(sharpe),               unit="ratio")
-      r.headline("sortino_ratio",    float(sortino),              unit="ratio")
-      r.headline("maximum_drawdown", float(mdd),                  unit="ratio")
-      r.headline("hpr",              float(bt.metric.hpr()),      unit="ratio")
-      r.headline("monthly_return",   float(returns['monthly_return']), unit="ratio")
-      r.headline("annual_return",    float(returns['annual_return']),  unit="ratio")
+      r.metric("sharpe_ratio",     float(sharpe),               unit="ratio")
+      r.metric("sortino_ratio",    float(sortino),              unit="ratio")
+      r.metric("maximum_drawdown", float(mdd),                  unit="ratio")
+      r.metric("hpr",              float(bt.metric.hpr()),      unit="ratio")
+      r.metric("monthly_return",   float(returns['monthly_return']), unit="ratio")
+      r.metric("annual_return",    float(returns['annual_return']),  unit="ratio")
       r.artifact("equity_curve",   "result/backtest/hpr.svg",       kind="chart")
       r.artifact("drawdown_chart", "result/backtest/drawdown.svg",  kind="chart")
       r.artifact("inventory",      "result/backtest/inventory.svg", kind="chart")
@@ -259,7 +259,7 @@ switch from local-wheel to pip-install-from-PyPI.
 
 - Actual PyPI publish (runbook only — when ready, follow it)
 - GPU support (`env.base=python-cuda`) — orthogonal
-- `plutus snapshot --headlines` — that's Plan 8 (snapshot-then-commit workflow), tracked separately
+- `plutus snapshot --metrics` — that's Plan 8 (snapshot-then-commit workflow), tracked separately
 - Removing the legacy v1 `extract/plan.py` and v1 compare path — still deferred
 - Non-Python SDKs (R, Julia, shell) — the file contract supports them; ergonomic libraries are future work
 
@@ -267,11 +267,11 @@ switch from local-wheel to pip-install-from-PyPI.
 
 ## Connection to Plan 8
 
-Plan 8 will extend `plutus snapshot` to write `expected.headlines[].value` from each step's results.json. The author workflow becomes:
+Plan 8 will extend `plutus snapshot` to write `expected.metrics[].value` from each step's results.json. The author workflow becomes:
 
 1. `plutus init` — scaffold manifest skeleton + example_script.py + CI workflow
 2. Instrument scripts with `pv.step(...)` blocks (Plan 7 makes this work in Docker)
-3. Run `plutus snapshot` — fills manifest's headline values from a fresh run
+3. Run `plutus snapshot` — fills manifest's metric values from a fresh run
 4. Review diff, `git commit` — the commit IS the verification claim
 5. CI runs `plutus check` — verifies committed values match fresh runs
 

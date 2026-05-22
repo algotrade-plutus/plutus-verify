@@ -106,13 +106,13 @@ def test_emitted_yaml_translates_secrets():
     assert any(s["key"] == "API" for s in data["secrets"])
 
 
-def test_emitted_yaml_translates_metrics_to_headlines():
+def test_emitted_yaml_translates_metrics_to_metrics():
     text = to_v2_manifest_yaml(_minimal_plan())
     data = yaml.safe_load(text)
     er = data["expected"][0]
     assert er["step_id"] == "in_sample"
-    assert er["headlines"][0]["name"] == "sharpe_ratio"
-    assert er["headlines"][0]["value"] == 0.85
+    assert er["metrics"][0]["name"] == "sharpe_ratio"
+    assert er["metrics"][0]["value"] == 0.85
 
 
 def test_emitted_yaml_translates_charts_to_visual_similarity():
@@ -207,18 +207,18 @@ def _plan_with_metric(name: str, value) -> ExtractedPlan:
 def test_emitted_yaml_canonicalizes_metric_name_and_emits_display_name():
     text = to_v2_manifest_yaml(_plan_with_metric("Sharpe Ratio", 0.95))
     data = yaml.safe_load(text)
-    headline = data["expected"][0]["headlines"][0]
-    assert headline["name"] == "sharpe_ratio"
-    assert headline["display_name"] == "Sharpe Ratio"
-    assert headline["value"] == 0.95
+    metric = data["expected"][0]["metrics"][0]
+    assert metric["name"] == "sharpe_ratio"
+    assert metric["display_name"] == "Sharpe Ratio"
+    assert metric["value"] == 0.95
 
 
 def test_emitted_yaml_canonicalizes_complex_metric_name():
     text = to_v2_manifest_yaml(_plan_with_metric("Maximum Drawdown (MDD)", 0.12))
     data = yaml.safe_load(text)
-    headline = data["expected"][0]["headlines"][0]
-    assert headline["name"] == "maximum_drawdown_mdd"
-    assert headline["display_name"] == "Maximum Drawdown (MDD)"
+    metric = data["expected"][0]["metrics"][0]
+    assert metric["name"] == "maximum_drawdown_mdd"
+    assert metric["display_name"] == "Maximum Drawdown (MDD)"
 
 
 def test_emitted_yaml_unparseable_value_becomes_zero_with_todo():
@@ -227,16 +227,16 @@ def test_emitted_yaml_unparseable_value_becomes_zero_with_todo():
     assert "TODO(plutus-transfer)" in text
     assert 'could not parse "abc" as float' in text
     data = yaml.safe_load(text)
-    headline = data["expected"][0]["headlines"][0]
-    assert headline["value"] == 0.0
+    metric = data["expected"][0]["metrics"][0]
+    assert metric["value"] == 0.0
 
 
 def test_emitted_yaml_parses_stringified_float():
     text = to_v2_manifest_yaml(_plan_with_metric("hpr", "0.42"))
     data = yaml.safe_load(text)
-    headline = data["expected"][0]["headlines"][0]
-    assert headline["name"] == "hpr"
-    assert headline["value"] == 0.42
+    metric = data["expected"][0]["metrics"][0]
+    assert metric["name"] == "hpr"
+    assert metric["value"] == 0.42
 
 
 def test_emitted_yaml_does_not_contain_locate():
@@ -245,22 +245,22 @@ def test_emitted_yaml_does_not_contain_locate():
     assert "locate:" not in text
 
 
-def test_instrument_todo_markdown_lists_steps_with_headlines():
+def test_instrument_todo_markdown_lists_steps_with_metrics():
     plan = _minimal_plan()  # has one step (in_sample) with one metric (sharpe_ratio)
     md = instrument_todo_markdown(plan)
-    # The step with a headline appears
+    # The step with a metric appears
     assert "in_sample" in md
     assert 'pv.step("in_sample")' in md
     assert "sharpe_ratio" in md
-    # The step without headlines (data_collection) is omitted
+    # The step without metrics (data_collection) is omitted
     assert "data_collection" not in md
 
 
 def test_instrument_todo_markdown_uses_canonical_names():
     plan = _plan_with_metric("Sharpe Ratio", 0.95)
     md = instrument_todo_markdown(plan)
-    # Canonical snake_case is the literal passed to r.headline(...)
-    assert 'r.headline("sharpe_ratio"' in md
+    # Canonical snake_case is the literal passed to r.metric(...)
+    assert 'r.metric("sharpe_ratio"' in md
 
 
 def test_instrument_todo_markdown_includes_command_when_present():
@@ -269,7 +269,7 @@ def test_instrument_todo_markdown_includes_command_when_present():
     assert "python -m demo.backtest" in md
 
 
-def test_instrument_todo_markdown_empty_when_no_headlines():
+def test_instrument_todo_markdown_empty_when_no_metrics():
     base = _minimal_plan()
     plan = ExtractedPlan(
         schema_version=base.schema_version,

@@ -154,7 +154,7 @@ def _write_expected(buf: TextIO, plan: ExtractedPlan) -> None:
     for er in plan.expected_results:
         buf.write(f"  - step_id: {er.step_id}\n")
         if er.metrics:
-            buf.write("    headlines:\n")
+            buf.write("    metrics:\n")
             for m in er.metrics:
                 canonical = _canonical_name(m.name)
                 parsed, unparseable = _coerce_float(m.value)
@@ -173,7 +173,7 @@ def _write_expected(buf: TextIO, plan: ExtractedPlan) -> None:
                     f"        tolerance: {{kind: {tol_kind}, value: {tol_value}}}\n"
                 )
         else:
-            buf.write("    headlines: []\n")
+            buf.write("    metrics: []\n")
         if er.charts:
             buf.write("    reference_outputs:\n")
             for c in er.charts:
@@ -222,9 +222,9 @@ Once every step's script is instrumented, rename `manifest.yaml.draft` to
 def instrument_todo_markdown(plan: ExtractedPlan) -> str:
     """Generate the companion .plutus/instrument_TODO.md content.
 
-    Lists each step that has expected headlines, with a copy-paste-ready
+    Lists each step that has expected metrics, with a copy-paste-ready
     SDK snippet showing the ``pv.step(...)`` block the author must add to
-    their reproducibility script. Steps with no expected headlines are
+    their reproducibility script. Steps with no expected metrics are
     skipped — there's nothing for the author to instrument there.
     """
     steps_by_id = {s.id: s for s in plan.steps}
@@ -254,7 +254,7 @@ def instrument_todo_markdown(plan: ExtractedPlan) -> str:
             # The variable name on the RHS matches the canonical metric name;
             # author replaces with whatever local var holds the value.
             buf.write(
-                f'    r.headline("{canonical}",{padding} {canonical},'
+                f'    r.metric("{canonical}",{padding} {canonical},'
                 f'{padding} unit="ratio")\n'
             )
         buf.write(

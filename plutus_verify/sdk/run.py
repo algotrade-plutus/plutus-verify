@@ -1,11 +1,11 @@
 """Run context manager + step() factory — the author-facing SDK surface.
 
-A ``Run`` accumulates headline metrics, artifact references, and metadata
+A ``Run`` accumulates metrics, artifact references, and metadata
 inside a reproducibility step. On clean ``__exit__`` it writes a strictly
 validated ``results.json`` at ``<repo>/.plutus/run/<step_id>/results.json``.
 
 Design notes:
-- Validation happens twice. ``headline`` / ``artifact`` / ``metadata`` raise
+- Validation happens twice. ``metric`` / ``artifact`` / ``metadata`` raise
   ``ValueError`` at call time so authors get an immediate stack pointing at
   the offending line. ``flush`` re-validates the assembled payload against
   the JSON Schema as a defense-in-depth check.
@@ -111,7 +111,7 @@ class Run:
 
     # -- accumulators ---------------------------------------------------
 
-    def headline(self, name: str, value: float, *, unit: str = "ratio") -> None:
+    def metric(self, name: str, value: float, *, unit: str = "ratio") -> None:
         _require_snake_case("metric name", name)
         if name in self._metric_names:
             raise ValueError(f"duplicate metric name: {name!r}")
@@ -179,7 +179,7 @@ class Run:
         tmp = out_dir / "results.json.tmp"
 
         # ``allow_nan=False`` is belt-and-braces; we already reject NaN/Inf
-        # in ``headline``, but metadata values pass through json.dumps too.
+        # in ``metric``, but metadata values pass through json.dumps too.
         tmp.write_text(json.dumps(payload, indent=2, sort_keys=False, allow_nan=False))
         os.replace(tmp, final)
         self._flushed = True

@@ -21,16 +21,16 @@ def _stage_repo(tmp_path: Path, with_outputs: bool = True):
         (tmp_path / "data" / "processed" / "x.parquet").write_text("ok")
 
 
-def _read_headline_value(repo_path: Path, step_id: str, name: str) -> float:
-    """Re-load the on-disk manifest and return the named headline value."""
+def _read_metric_value(repo_path: Path, step_id: str, name: str) -> float:
+    """Re-load the on-disk manifest and return the named metric value."""
     text = (repo_path / ".plutus" / "manifest.yaml").read_text()
     data = yaml.safe_load(text)
     for block in data["expected"]:
         if block["step_id"] == step_id:
-            for h in block.get("headlines") or []:
+            for h in block.get("metrics") or []:
                 if h["name"] == name:
                     return h["value"]
-    raise KeyError(f"no headline {name!r} for step {step_id!r}")
+    raise KeyError(f"no metric {name!r} for step {step_id!r}")
 
 
 _TWO_STEP_MANIFEST = """\
@@ -65,7 +65,7 @@ steps:
 
 expected:
   - step_id: in_sample
-    headlines:
+    metrics:
       - name: sharpe_ratio
         value: 0.0
         tolerance: {kind: relative, value: 0.05}
@@ -74,7 +74,7 @@ expected:
         tolerance: {kind: relative, value: 0.05}
     reference_outputs: []
   - step_id: out_of_sample
-    headlines:
+    metrics:
       - name: sharpe_ratio
         value: 0.0
         tolerance: {kind: relative, value: 0.05}
@@ -148,34 +148,34 @@ def test_snapshot_with_run_aborts_on_check_failure(tmp_path: Path):
         )
 
 
-def test_snapshot_updates_headline_values_from_results_json(tmp_path: Path):
+def test_snapshot_updates_metric_values_from_results_json(tmp_path: Path):
     _stage_repo(tmp_path)
     with pv_step("in_sample", repo_path=tmp_path) as r:
-        r.headline("sharpe_ratio", 0.95, unit="ratio")
+        r.metric("sharpe_ratio", 0.95, unit="ratio")
 
     res = scaffold_snapshot(tmp_path, run_check_first=False)
-    assert res.headlines_updated == 1
-    assert _read_headline_value(tmp_path, "in_sample", "sharpe_ratio") == 0.95
+    assert res.metrics_updated == 1
+    assert _read_metric_value(tmp_path, "in_sample", "sharpe_ratio") == 0.95
 
 
-def test_snapshot_update_headline_values_false_skips_update(tmp_path: Path):
+def test_snapshot_update_metric_values_false_skips_update(tmp_path: Path):
     _stage_repo(tmp_path)
     with pv_step("in_sample", repo_path=tmp_path) as r:
-        r.headline("sharpe_ratio", 0.95, unit="ratio")
+        r.metric("sharpe_ratio", 0.95, unit="ratio")
 
     res = scaffold_snapshot(
-        tmp_path, run_check_first=False, update_headline_values=False
+        tmp_path, run_check_first=False, update_metric_values=False
     )
-    assert res.headlines_updated == 0
+    assert res.metrics_updated == 0
     # Manifest's value: still the placeholder.
-    assert _read_headline_value(tmp_path, "in_sample", "sharpe_ratio") == 0.0
+    assert _read_metric_value(tmp_path, "in_sample", "sharpe_ratio") == 0.0
 
 
 def test_snapshot_missing_results_json_appends_note(tmp_path: Path):
     _stage_repo(tmp_path)
     # No results.json written for in_sample.
     res = scaffold_snapshot(tmp_path, run_check_first=False)
-    assert res.headlines_updated == 0
+    assert res.metrics_updated == 0
     assert any(
         "results.json" in n and "in_sample" in n for n in res.notes
     ), f"expected a note mentioning results.json and in_sample, got: {res.notes}"
@@ -184,17 +184,17 @@ def test_snapshot_missing_results_json_appends_note(tmp_path: Path):
 def test_snapshot_extra_metric_in_results_skipped_silently(tmp_path: Path):
     _stage_repo(tmp_path)
     with pv_step("in_sample", repo_path=tmp_path) as r:
-        r.headline("sharpe_ratio", 0.95, unit="ratio")
-        r.headline("sortino_ratio", 1.20, unit="ratio")
+        r.metric("sharpe_ratio", 0.95, unit="ratio")
+        r.metric("sortino_ratio", 1.20, unit="ratio")
 
     res = scaffold_snapshot(tmp_path, run_check_first=False)
     # Only sharpe was declared in the skeleton manifest; sortino is silently dropped.
-    assert res.headlines_updated == 1
+    assert res.metrics_updated == 1
     assert not any("sortino" in n for n in res.notes), (
-        f"snapshot should pre-filter to declared headlines, but got note about "
+        f"snapshot should pre-filter to declared metrics, but got note about "
         f"sortino: {res.notes}"
     )
-    assert _read_headline_value(tmp_path, "in_sample", "sharpe_ratio") == 0.95
+    assert _read_metric_value(tmp_path, "in_sample", "sharpe_ratio") == 0.95
 
 
 def test_snapshot_update_reference_outputs_false_skips_copy(tmp_path: Path):
@@ -220,10 +220,10 @@ def test_snapshot_both_flags_off_is_noop_on_disk(tmp_path: Path):
         tmp_path,
         run_check_first=False,
         update_reference_outputs=False,
-        update_headline_values=False,
+        update_metric_values=False,
     )
     assert res.files_copied == 0
-    assert res.headlines_updated == 0
+    assert res.metrics_updated == 0
     # Manifest text is byte-identical.
     manifest_after = (tmp_path / ".plutus" / "manifest.yaml").read_text()
     assert manifest_before == manifest_after
@@ -232,21 +232,21 @@ def test_snapshot_both_flags_off_is_noop_on_disk(tmp_path: Path):
     assert not any(p.is_dir() for p in expected_root.iterdir())
 
 
-def test_snapshot_handles_multiple_steps_with_headlines(tmp_path: Path):
+def test_snapshot_handles_multiple_steps_with_metrics(tmp_path: Path):
     scaffold_init(tmp_path)
     # Overwrite the manifest with our two-step variant.
     (tmp_path / ".plutus" / "manifest.yaml").write_text(_TWO_STEP_MANIFEST)
 
     with pv_step("in_sample", repo_path=tmp_path) as r:
-        r.headline("sharpe_ratio", 1.10, unit="ratio")
-        r.headline("maximum_drawdown", 0.18, unit="ratio")
+        r.metric("sharpe_ratio", 1.10, unit="ratio")
+        r.metric("maximum_drawdown", 0.18, unit="ratio")
     with pv_step("out_of_sample", repo_path=tmp_path) as r:
-        r.headline("sharpe_ratio", 0.85, unit="ratio")
-        r.headline("maximum_drawdown", 0.22, unit="ratio")
+        r.metric("sharpe_ratio", 0.85, unit="ratio")
+        r.metric("maximum_drawdown", 0.22, unit="ratio")
 
     res = scaffold_snapshot(tmp_path, run_check_first=False)
-    assert res.headlines_updated == 4
-    assert _read_headline_value(tmp_path, "in_sample", "sharpe_ratio") == 1.10
-    assert _read_headline_value(tmp_path, "in_sample", "maximum_drawdown") == 0.18
-    assert _read_headline_value(tmp_path, "out_of_sample", "sharpe_ratio") == 0.85
-    assert _read_headline_value(tmp_path, "out_of_sample", "maximum_drawdown") == 0.22
+    assert res.metrics_updated == 4
+    assert _read_metric_value(tmp_path, "in_sample", "sharpe_ratio") == 1.10
+    assert _read_metric_value(tmp_path, "in_sample", "maximum_drawdown") == 0.18
+    assert _read_metric_value(tmp_path, "out_of_sample", "sharpe_ratio") == 0.85
+    assert _read_metric_value(tmp_path, "out_of_sample", "maximum_drawdown") == 0.22

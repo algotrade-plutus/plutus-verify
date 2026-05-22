@@ -14,7 +14,7 @@
 
 ## Architectural decisions (recorded)
 
-1. **Reverse adapter is best-effort and TODO-marker-heavy.** Fields the LLM can fill confidently (commands, secrets, outputs, headline metrics) get copied directly. Fields the LLM can't infer (data sources, env os_packages, reference output files) get `null`/`[]` + TODO comments in the emitted YAML.
+1. **Reverse adapter is best-effort and TODO-marker-heavy.** Fields the LLM can fill confidently (commands, secrets, outputs, expected metrics) get copied directly. Fields the LLM can't infer (data sources, env os_packages, reference output files) get `null`/`[]` + TODO comments in the emitted YAML.
 2. **Output goes to `.plutus/manifest.yaml.draft`, not `manifest.yaml`.** The `.draft` extension forces the author to consciously rename it, which is the explicit "I've reviewed this" gate. `plutus check` ignores `.draft` files.
 3. **No new schema fields.** The v2 manifest format is locked. The transfer tool produces whatever can be produced; rest gets TODO.
 4. **Doesn't delete `extract/plan.py` or related modules.** The transfer tool depends on them. Full v1-schema deletion is deferred to a future cleanup plan.
@@ -59,7 +59,7 @@ Reverse-adapter mapping (each v1 field → v2 location, with TODO if uncertain):
 | `steps[*]` with `alternatives` of `manual_download` | `data_sources.raw[*]` with `satisfies: [step.id]`      |
 | `steps[*]` (everything else)           | `steps[*]` (id, nine_step, required, command, network, outputs from `produces`) |
 | `steps[*]` (no `inputs` in v1)         | empty `inputs: []` + `# TODO: declare inputs`                      |
-| `expected_results[*].metrics[*]`       | `expected[*].headlines[*]` (name, value, locate, tolerance)         |
+| `expected_results[*].metrics[*]`       | `expected[*].metrics[*]` (name, value, locate, tolerance)         |
 | `expected_results[*].charts[*]`        | `expected[*].reference_outputs[*]` with `compare: visual_similarity` |
 | `nine_step_mapping`                    | `nine_step_coverage` (drop confidence)                              |
 | Anywhere LLM uncertain (low confidence on nine_step entries) | preserve as TODO comment           |
@@ -174,13 +174,13 @@ def test_emitted_yaml_translates_secrets():
     assert any(s["key"] == "API" for s in data["secrets"])
 
 
-def test_emitted_yaml_translates_metrics_to_headlines():
+def test_emitted_yaml_translates_metrics_to_metrics():
     text = to_v2_manifest_yaml(_minimal_plan())
     data = yaml.safe_load(text)
     er = data["expected"][0]
     assert er["step_id"] == "in_sample"
-    assert er["headlines"][0]["name"] == "sharpe_ratio"
-    assert er["headlines"][0]["value"] == 0.85
+    assert er["metrics"][0]["name"] == "sharpe_ratio"
+    assert er["metrics"][0]["value"] == 0.85
 
 
 def test_emitted_yaml_translates_charts_to_visual_similarity():
@@ -382,7 +382,7 @@ def _write_expected(buf: TextIO, plan: ExtractedPlan) -> None:
     for er in plan.expected_results:
         buf.write(f"  - step_id: {er.step_id}\n")
         if er.metrics:
-            buf.write("    headlines:\n")
+            buf.write("    metrics:\n")
             for m in er.metrics:
                 buf.write(f"      - name: {m.name}\n")
                 buf.write(f"        value: {m.value!r}\n")
@@ -400,7 +400,7 @@ def _write_expected(buf: TextIO, plan: ExtractedPlan) -> None:
                     buf.write(f"          pattern: {_yaml_str(m.locate.pattern)}\n")
                 buf.write(f"        tolerance: {{kind: {m.tolerance.kind}, value: {m.tolerance.value}}}\n")
         else:
-            buf.write("    headlines: []\n")
+            buf.write("    metrics: []\n")
         if er.charts:
             buf.write("    reference_outputs:\n")
             for c in er.charts:
@@ -834,7 +834,7 @@ plutus verify <git_url>          # explicit equivalent of bare `plutus-verify <g
 - GPU support (`env.gpu_required`, `env.base=python-cuda`).
 - S3 downloader in the data-tier resolver.
 - `plutus render-readme` (generate README from manifest).
-- `plutus_verify` SDK for in-code instrumentation (`pv.headline(...)`,
+- `plutus_verify` SDK for in-code instrumentation (`pv.metric(...)`,
   `pv.export_manifest()`).
 ```
 

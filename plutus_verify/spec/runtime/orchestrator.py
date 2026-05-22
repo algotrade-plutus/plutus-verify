@@ -50,7 +50,7 @@ class StepRuntimeResult:
 
 
 @dataclass
-class HeadlineResult:
+class ExpectedMetricResult:
     name: str
     ok: bool
     actual: Any
@@ -63,7 +63,7 @@ class V2RuntimeResult:
     image: str
     data_tier_used: str
     step_results: dict[str, StepRuntimeResult] = field(default_factory=dict)
-    headline_results: dict[str, dict[str, HeadlineResult]] = field(default_factory=dict)
+    metric_results: dict[str, dict[str, ExpectedMetricResult]] = field(default_factory=dict)
     reference_results: dict[str, list[CompareResult]] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
 
@@ -141,7 +141,7 @@ def run_v2_pipeline(
         result.step_results[step.id] = sr
 
     for er in manifest.expected:
-        result.headline_results[er.step_id] = _compare_headlines(
+        result.metric_results[er.step_id] = _compare_metrics(
             er, repo_path, result.step_results
         )
         result.reference_results[er.step_id] = _compare_refs(
@@ -242,13 +242,13 @@ def _run_step(
     return sr
 
 
-def _compare_headlines(
+def _compare_metrics(
     er, repo_path: Path, step_results: dict[str, StepRuntimeResult]
-) -> dict[str, "HeadlineResult"]:
-    """Compare expected headlines against metrics in <repo>/.plutus/run/<step_id>/results.json.
+) -> dict[str, "ExpectedMetricResult"]:
+    """Compare expected metrics against metrics in <repo>/.plutus/run/<step_id>/results.json.
 
     Reads the results.json the step's SDK-instrumented script wrote, builds a
-    name → value lookup, and compares each expected headline. Locator dispatch
+    name → value lookup, and compares each expected metric. Locator dispatch
     is gone — metrics are identified by canonical snake_case name only.
 
     ``step_results`` is currently unused — reserved for future use (e.g.,
@@ -259,26 +259,26 @@ def _compare_headlines(
     except MissingResultsError as exc:
         detail = f"results.json missing: {exc}"
         return {
-            h.name: HeadlineResult(
+            h.name: ExpectedMetricResult(
                 name=h.name, ok=False, actual=None, expected=h.value, detail=detail
             )
-            for h in er.headlines
+            for h in er.metrics
         }
     except MalformedResultsError as exc:
         detail = f"results.json malformed: {exc}"
         return {
-            h.name: HeadlineResult(
+            h.name: ExpectedMetricResult(
                 name=h.name, ok=False, actual=None, expected=h.value, detail=detail
             )
-            for h in er.headlines
+            for h in er.metrics
         }
 
     metrics_by_name = {m.name: m for m in results.metrics}
-    out: dict[str, HeadlineResult] = {}
-    for h in er.headlines:
+    out: dict[str, ExpectedMetricResult] = {}
+    for h in er.metrics:
         m = metrics_by_name.get(h.name)
         if m is None:
-            out[h.name] = HeadlineResult(
+            out[h.name] = ExpectedMetricResult(
                 name=h.name,
                 ok=False,
                 actual=None,
@@ -287,7 +287,7 @@ def _compare_headlines(
             )
             continue
         ok, detail = _within_tolerance(m.value, h.value, h.tolerance)
-        out[h.name] = HeadlineResult(
+        out[h.name] = ExpectedMetricResult(
             name=h.name, ok=ok, actual=m.value, expected=h.value, detail=detail
         )
     return out
