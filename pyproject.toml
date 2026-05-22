@@ -28,6 +28,7 @@ dependencies = [
   "pyyaml>=6.0",
   "jsonschema>=4.20",
   "jsonpath-ng>=1.6",
+  "ruamel.yaml>=0.18",
 ]
 
 [project.optional-dependencies]
