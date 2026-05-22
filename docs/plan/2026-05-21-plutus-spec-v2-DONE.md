@@ -1,6 +1,6 @@
-# Plutus v2 spec — Plans 1-6 complete
+# Plutus v2 spec — Plans 1-7 complete
 
-Six plans landed the v2 manifest format and got it running against a real
+Seven plans landed the v2 manifest format and got it running against a real
 Plutus repo:
 
 - **Plan 1** — foundation: `plutus_verify/spec/` (dataclasses, schema, loader,
@@ -27,6 +27,14 @@ Plutus repo:
   3/6 OOS; OOS divergence is an upstream reproducibility finding, not a
   pipeline regression). Golden manifest + results.json live under
   `out/transfer-test/ProtoMarketMaker/` (gitignored working copy).
+- **Plan 7** — [package + SDK-in-Docker](2026-05-22-plutus-package-and-sdk-in-docker.md):
+  packaged `plutus_verify` as a wheel and wired the Dockerfile generator to
+  bundle + install that wheel inside every generated image, so author scripts
+  can `import plutus_verify as pv` and call `pv.step(...)` without
+  `requirements.txt` plumbing. Task 4 re-verified ProtoMarketMaker end-to-end
+  with real SDK calls inside the container — same pass pattern as Plan 6 / Task
+  7 (6/6 in-sample, 3/6 OOS), confirming the SDK install path is correct and
+  is not a regression vector.
 
 ## End-state architecture
 
@@ -48,7 +56,3 @@ plutus verify <git_url>          # explicit equivalent of bare `plutus-verify <g
 - GPU support (`env.gpu_required`, `env.base=python-cuda`).
 - S3 downloader in the data-tier resolver.
 - `plutus render-readme` (generate README from manifest).
-- SDK install path inside the generated Docker image — today author scripts
-  must either hand-roll the `results.json` write or `pip install plutus_verify`
-  via `requirements.txt`. A first-class "include SDK in image" knob is a
-  follow-up.
