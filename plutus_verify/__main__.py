@@ -1,10 +1,11 @@
 """CLI entrypoint for ``plutus-verify`` / ``plutus``.
 
 Provides a Click group with subcommands:
-  - verify   : original single-command verifier (PLUTUS-standard repo)
-  - init     : scaffold .plutus/manifest.yaml + .github/workflows/plutus.yml
-  - check    : run the native v2 pipeline locally against a working copy
-  - snapshot : capture step outputs into .plutus/expected/
+  - verify    : original single-command verifier (PLUTUS-standard repo)
+  - init      : scaffold .plutus/manifest.yaml + .github/workflows/plutus.yml
+  - check     : run the native v2 pipeline locally against a working copy
+  - snapshot  : capture step outputs into .plutus/expected/
+  - bootstrap : generate manifest.yaml.draft + manifest_TODO.md from .plutus/run/
 
 The legacy ``plutus-verify <git_url>`` form is preserved via the backward-compat
 ``main()`` entrypoint which injects 'verify' when the first arg isn't a known
@@ -561,6 +562,57 @@ def transfer_cmd(
 
 
 # ---------------------------------------------------------------------------
+# bootstrap subcommand
+# ---------------------------------------------------------------------------
+
+@cli.command("bootstrap")
+@click.argument("repo_path", type=click.Path(path_type=Path, file_okay=False), default=".")
+@click.option(
+    "--force",
+    is_flag=True,
+    default=False,
+    help="Overwrite existing manifest.yaml.draft and manifest_TODO.md.",
+)
+def bootstrap_cmd(repo_path: Path, force: bool) -> None:
+    """Generate manifest.yaml.draft + manifest_TODO.md from .plutus/run/.
+
+    Run AFTER instrumenting your scripts with `pv.step(...)` and producing
+    .plutus/run/<step_id>/results.json files (i.e., after a successful
+    local run). Bootstrap auto-fills the ~70% of the manifest derivable
+    from the filesystem and the results, leaving TODO_* sentinels on
+    fields that require domain knowledge.
+    """
+    from plutus_verify.scaffold.bootstrap import (
+        BootstrapError,
+        scaffold_bootstrap,
+    )
+    try:
+        result = scaffold_bootstrap(Path(repo_path), force=force)
+    except BootstrapError as exc:
+        click.echo(f"error: {exc}", err=True)
+        ctx = click.get_current_context()
+        ctx.exit(3)
+        return
+    repo_root = Path(repo_path).resolve()
+    click.echo(
+        f"draft:    {result.draft_path.relative_to(repo_root)}  "
+        f"({result.steps_with_metrics} steps, {result.metrics_total} metrics)"
+    )
+    click.echo(
+        f"guidance: {result.todo_path.relative_to(repo_root)}"
+    )
+    for note in result.notes:
+        click.echo(f"  {note}")
+    click.echo("")
+    click.echo(
+        "Next: fill in TODO_* markers in the draft (see manifest_TODO.md),"
+    )
+    click.echo(
+        "      rename .draft → .yaml, then run `plutus check`."
+    )
+
+
+# ---------------------------------------------------------------------------
 # Backward-compatible entrypoint
 # ---------------------------------------------------------------------------
 
@@ -568,7 +620,7 @@ def main() -> None:
     """Backward-compatible bare entrypoint: ``plutus-verify <git_url>`` → ``plutus verify <git_url>``."""
     args = sys.argv[1:]
     # If first arg looks like a known subcommand, pass through; else inject 'verify'
-    known = {"init", "check", "snapshot", "transfer", "verify", "--help", "-h", "--version"}
+    known = {"init", "check", "snapshot", "transfer", "bootstrap", "verify", "--help", "-h", "--version"}
     if args and args[0] not in known and not args[0].startswith("-"):
         args = ["verify"] + args
     cli(args=args, prog_name="plutus-verify", standalone_mode=True)
