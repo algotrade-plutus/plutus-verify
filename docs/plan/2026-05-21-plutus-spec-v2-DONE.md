@@ -1,6 +1,6 @@
-# Plutus v2 spec — Plans 1-9 complete
+# Plutus v2 spec — Plans 1-10 complete
 
-Nine plans landed the v2 manifest format and got it running against a real
+Ten plans landed the v2 manifest format and got it running against a real
 Plutus repo:
 
 - **Plan 1** — foundation: `plutus_verify/spec/` (dataclasses, schema, loader,
@@ -58,6 +58,20 @@ Plutus repo:
   regenerated from the sandbox's results.json contains both expected blocks
   with all 12 metrics auto-filled + snake_case → display_name conversions
   applied; guidance doc is 302 lines walking the author through each TODO.
+- **Plan 10** — [verifier integrity + SDK bundling robustness](2026-05-25-plutus-verifier-integrity.md):
+  surfaced by the first real-world upstream ProtoMarketMaker upgrade
+  attempt. Closes three bugs: (a) SDK auto-injection silently failed and
+  the verifier compared against stale host-side `results.json`, reporting
+  false-positive "ok" metric lines under FAILED steps; (b) flat output
+  hid the 12+ metric lines in a single block. Three fixes: loud
+  `SdkBundleError` when the manifest needs the SDK; wipe `.plutus/run/`
+  at the start of every `plutus check`; skip metric comparison when the
+  step failed. Plus vendor a prebuilt wheel inside the package
+  (`plutus_verify/_bundled/`) populated by `scripts/release-build.sh`, so
+  production installs no longer rely on the fragile source-locate-then-
+  build path. Plus a 9-step output renderer (`scaffold/check_report.py`)
+  that groups manifest steps under their framework parent, indents
+  metric comparisons under each step.
 
 ## End-state architecture
 
@@ -70,7 +84,7 @@ plutus transfer <repo_path>      # legacy README → draft v2 manifest
 plutus verify <git_url>          # explicit equivalent of bare `plutus-verify <git_url>`
 ```
 
-## Still deferred (not in any of these 9 plans)
+## Still deferred (not in any of these 10 plans)
 
 - Deletion of v1 `extract/plan.py` — the transfer tool depends on it; full
   schema retirement is a follow-up cleanup.

@@ -56,7 +56,7 @@ Before touching anything:
 3. Confirm whether they want a PR opened at the end or just commits on a branch.
 4. Confirm they have (or can produce) the input data files locally — either via running `data_loader.py` (needs DB creds) or via downloading from the Google Drive folder at `https://drive.google.com/drive/folders/181d7JcfHilIvviLgEuaDt2VqwZLYnYUF`.
 
-## Step 1 — Install plutus-verify into a host venv
+## Step 1 — Install plutus-verify into a host venv (use a wheel, not editable)
 
 In the upstream ProtoMarketMaker clone:
 
@@ -69,18 +69,36 @@ source .venv/bin/activate
 
 # Install ProtoMarketMaker's own deps
 pip install -r requirements.txt
+```
 
-# Install the verifier from local source (editable install).
-# IMPORTANT: this is for HOST-side `plutus check` and `plutus bootstrap`.
-# The Docker image installs its own copy via the verifier's auto-injection
-# (Plan 7) so author scripts can `import plutus_verify` inside the container.
-pip install -e /Users/dan/algotrade-research/plutus-automation-scoring
+**Now install plutus-verify from a built wheel — NOT `pip install -e`.**
+The editable install path on setuptools sometimes produces an `.egg-info`
+metadata layout that the verifier's "where am I installed?" lookup
+handles poorly; the wheel install avoids the fragility entirely.
 
-# Sanity-check — should list init/check/snapshot/transfer/bootstrap/verify
+```bash
+# One-time, in the plutus-verify repo: build the wheel via the release script
+# (two-pass so the wheel contains a bundled copy of itself — Plan 10).
+cd /Users/dan/algotrade-research/plutus-automation-scoring
+source .venv/bin/activate
+bash scripts/release-build.sh
+# → produces dist/plutus_verify-0.2.0-py3-none-any.whl
+
+# Back in ProtoMarketMaker's venv, install from that wheel.
+cd <upstream-protomarketmaker-path>
+source .venv/bin/activate
+pip install /Users/dan/algotrade-research/plutus-automation-scoring/dist/plutus_verify-0.2.0-py3-none-any.whl --force-reinstall
+
+# Sanity-checks
+python -c "import plutus_verify; print(plutus_verify.__version__)"
+# → 0.2.0
 plutus --help
+# → should list init / check / snapshot / transfer / bootstrap / verify
 ```
 
 If `plutus --help` doesn't show `bootstrap` in the subcommand list, stop and fix the install (most likely Python version mismatch — 3.11+ required).
+
+Why not `pip install -e`? See `docs/plan/2026-05-25-plutus-verifier-integrity.md` for the full incident report. Short version: a real upstream run silently produced false-positive "ok" lines under FAILED steps because the editable install caused the SDK to fail to bundle into the Docker image. The wheel install closes that hole. Plan 10 also added a loud-error guard so future failures of this class are surfaced immediately rather than silently degraded.
 
 ## Step 2 — Instrument `backtesting.py`
 
