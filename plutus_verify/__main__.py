@@ -375,7 +375,8 @@ def check_cmd(repo_path: Path, secrets_from_env: bool, data_tier: str) -> None:
     import os
 
     from plutus_verify.scaffold.check import scaffold_check
-    from plutus_verify.spec.loader import ManifestLoadError
+    from plutus_verify.scaffold.check_report import render_check_report
+    from plutus_verify.spec.loader import ManifestLoadError, load_manifest
     from plutus_verify.spec.runtime import BuildError, make_image_builder
 
     try:
@@ -402,17 +403,9 @@ def check_cmd(repo_path: Path, secrets_from_env: bool, data_tier: str) -> None:
         ctx.exit(2)
         return
 
-    click.echo(f"image: {res.runtime_result.image}")
-    click.echo(f"data tier: {res.runtime_result.data_tier_used}")
-    for sid, sr in res.runtime_result.step_results.items():
-        status = "ok" if sr.exit_code == 0 and sr.preflight_error is None else "FAIL"
-        skip = f" (skipped: {sr.skipped_reason})" if sr.skipped_reason else ""
-        pf = f" [preflight: {sr.preflight_error}]" if sr.preflight_error else ""
-        click.echo(f"  {status} {sid}: exit={sr.exit_code}{skip}{pf}")
-    for step_id, hrs in res.runtime_result.metric_results.items():
-        for name, h in hrs.items():
-            marker = "ok" if h.ok else "FAIL"
-            click.echo(f"  {marker} {step_id}.{name}: actual={h.actual} expected={h.expected} {h.detail}")
+    manifest = load_manifest(Path(repo_path))
+    for line in render_check_report(manifest, res.runtime_result):
+        click.echo(line)
     ctx = click.get_current_context()
     ctx.exit(res.exit_code)
 
