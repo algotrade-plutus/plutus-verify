@@ -11,10 +11,17 @@ Public API:
     wheel matching the currently-installed plutus-verify version. Idempotent:
     a fresh wheel is reused; stale older-version wheels are cleaned up.
 
-Editable installs are located via PEP 610 ``direct_url.json``. If that file
-is absent (e.g., the distribution metadata comes from an ``*.egg-info``
-directory that still points at the source tree), we fall back to the
-``egg-info``'s own location.
+Resolution order (first success wins):
+
+1. **Vendored wheel** -- a wheel shipped inside the installed package at
+   ``plutus_verify/_bundled/plutus_verify-X.Y.Z-py3-none-any.whl``. Populated
+   by ``scripts/release-build.sh`` before each release; absent in editable
+   dev installs. Production path; no on-demand build.
+2. **PEP 610 ``direct_url.json``** -- editable wheel-format installs.
+3. **Egg-info-adjacent source tree** -- legacy editable installs.
+
+(2) and (3) build a wheel on demand via ``python -m build``. (1) just
+copies the prebuilt wheel into the build context.
 """
 from __future__ import annotations
 
@@ -25,6 +32,7 @@ import sys
 import tempfile
 from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
+from typing import Optional
 from urllib.parse import urlparse
 
 
@@ -36,19 +44,40 @@ _PACKAGE = "plutus-verify"
 _WHEEL_PREFIX = "plutus_verify"
 
 
+def _vendored_wheel() -> Optional[Path]:
+    """Return path to the bundled wheel shipped inside the installed package.
+
+    Returns ``None`` if no wheel ships inside ``plutus_verify/_bundled/``
+    (the dev/editable case).
+    """
+    try:
+        from importlib.resources import files
+
+        bundled = files("plutus_verify._bundled")
+        for entry in bundled.iterdir():
+            if entry.name.endswith(".whl") and entry.is_file():
+                # Convert Traversable to Path via str. For filesystem-backed
+                # resources (the only case we ship in) this is a real path.
+                return Path(str(entry))
+    except (ImportError, FileNotFoundError, ModuleNotFoundError, OSError):
+        return None
+    return None
+
+
 def ensure_plutus_wheel(build_context_dir: Path) -> Path:
     """Build (or reuse) a plutus_verify wheel inside ``build_context_dir``.
 
     Returns the absolute path to the staged wheel (``.whl`` file).
 
-    Strategy:
-        1. Locate the plutus-verify source via importlib.metadata
-           (PEP 610 ``direct_url.json`` for editable installs, with a
-           fallback for ``*.egg-info``-based editable installs).
-        2. Reuse an existing wheel in ``build_context_dir`` if it matches
-           the currently-installed version.
-        3. Otherwise, build a new wheel via ``python -m build --wheel``
-           and stage it in ``build_context_dir``.
+    Strategy (in order -- first one to succeed wins):
+        1. Vendored wheel: ``plutus_verify/_bundled/plutus_verify-*.whl``
+           shipped inside the installed package. Production path; no build.
+        2. PEP 610 ``direct_url.json`` (editable wheel-format install).
+        3. Egg-info-adjacent source tree (legacy editable install).
+
+    For (1), the wheel is staged into ``build_context_dir`` via
+    ``shutil.copy2``; no ``python -m build`` invocation. For (2) and (3),
+    fall back to the existing build-from-source code path.
 
     Raises:
         SdkBundleError: source not locatable, build failed, or the target
@@ -93,6 +122,13 @@ def ensure_plutus_wheel(build_context_dir: Path) -> Path:
         except OSError:
             pass
 
+    # Strategy 1: vendored wheel inside the installed package.
+    vendored = _vendored_wheel()
+    if vendored is not None and vendored.exists():
+        shutil.copy2(vendored, expected_wheel)
+        return expected_wheel
+
+    # Strategies 2 + 3: locate source on disk and build a wheel.
     source_dir = _locate_source(dist)
     tmp_wheel = _build_wheel_from_source(source_dir)
 

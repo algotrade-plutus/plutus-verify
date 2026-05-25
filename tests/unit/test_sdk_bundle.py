@@ -109,3 +109,62 @@ def test_ensure_plutus_wheel_target_is_a_file_raises(tmp_path):
 
     with pytest.raises(SdkBundleError):
         ensure_plutus_wheel(target)
+
+
+def test_vendored_wheel_is_used_when_present(tmp_path, monkeypatch):
+    """When a vendored wheel ships in the installed package, use it directly
+    -- no `python -m build` invocation.
+    """
+    version = _current_version()
+    fake_wheel = tmp_path / f"plutus_verify-{version}-py3-none-any.whl"
+    fake_wheel.write_bytes(b"PRETEND-WHEEL-BYTES")
+
+    monkeypatch.setattr(
+        "plutus_verify.spec.runtime.sdk_bundle._vendored_wheel",
+        lambda: fake_wheel,
+    )
+
+    # If anything tries to shell out to `python -m build`, fail loudly.
+    def _explode(*_args, **_kwargs):
+        raise AssertionError(
+            "subprocess.run must not be called when a vendored wheel is present"
+        )
+
+    monkeypatch.setattr(
+        "plutus_verify.spec.runtime.sdk_bundle.subprocess.run", _explode
+    )
+
+    build_dir = tmp_path / "build"
+    wheel = ensure_plutus_wheel(build_dir)
+
+    assert wheel.exists()
+    assert wheel.name == f"plutus_verify-{version}-py3-none-any.whl"
+    assert wheel.parent.resolve() == build_dir.resolve()
+    assert wheel.read_bytes() == b"PRETEND-WHEEL-BYTES", (
+        "staged wheel content should match the vendored wheel byte-for-byte"
+    )
+
+
+def test_vendored_wheel_path_falls_back_when_absent(tmp_path, monkeypatch):
+    """When no vendored wheel ships (dev/editable install), the existing
+    source-build path runs and produces a real wheel.
+    """
+    monkeypatch.setattr(
+        "plutus_verify.spec.runtime.sdk_bundle._vendored_wheel",
+        lambda: None,
+    )
+
+    wheel = ensure_plutus_wheel(tmp_path)
+
+    assert wheel.exists()
+    assert wheel.name == f"plutus_verify-{_current_version()}-py3-none-any.whl"
+
+
+def test_vendored_wheel_helper_returns_none_in_dev_install():
+    """In this editable dev install, _bundled/ is empty so the helper
+    returns ``None`` (the wheel-existence branch in `ensure_plutus_wheel`
+    is exercised in `test_vendored_wheel_is_used_when_present`).
+    """
+    from plutus_verify.spec.runtime.sdk_bundle import _vendored_wheel
+
+    assert _vendored_wheel() is None

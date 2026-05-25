@@ -11,3 +11,4 @@ dist/
 out/
 .DS_Store
 .plutus/build/
+plutus_verify/_bundled/*.whl

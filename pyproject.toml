@@ -49,6 +49,9 @@ plutus = "plutus_verify.__main__:cli"
 where = ["."]
 include = ["plutus_verify*"]
 
+[tool.setuptools.package-data]
+"plutus_verify._bundled" = ["*.whl"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
