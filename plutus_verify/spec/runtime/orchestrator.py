@@ -88,10 +88,19 @@ def run_v2_pipeline(
     # paths users typically pass on the CLI break `-v` and `docker build`.
     repo_path = repo_path.resolve()
 
+    # NOTE: stale-results-dir cleanup is performed by scaffold_check (the
+    # CLI wrapper), not here. Direct callers of run_v2_pipeline (tests,
+    # programmatic users) manage that themselves.
+
     # Stage the SDK wheel into the Docker build context so the generated image
-    # can `import plutus_verify`. Surfaced gracefully if it fails — author
-    # scripts that hand-roll the results.json JSON keep working even without
-    # the SDK in the image.
+    # can `import plutus_verify`. Scripts whose steps declare `expected.metrics`
+    # WILL `import plutus_verify` (to call `pv.step(...).metric(...)`), so a
+    # bundling failure for those manifests is fatal — silently building an
+    # image without the SDK produces ModuleNotFoundError at script-run time
+    # which then surfaces as a step failure with no obvious cause. Manifests
+    # with no expected metrics (scripts that hand-roll JSON or just verify
+    # outputs) get the previous graceful-degrade behavior.
+    sdk_required = any(er.metrics for er in manifest.expected)
     sdk_wheel_basename: Optional[str] = None
     _sdk_bundle_error: Optional[str] = None
     try:
@@ -99,10 +108,13 @@ def run_v2_pipeline(
         wheel = ensure_plutus_wheel(build_ctx)
         sdk_wheel_basename = wheel.name
     except SdkBundleError as exc:
-        # Don't crash the pipeline if the SDK wheel can't be built. The
-        # author's scripts may not use the SDK at all (Task 7 path), in which
-        # case the image just doesn't carry it. Surface the reason in
-        # result.notes for debugging.
+        if sdk_required:
+            raise SdkBundleError(
+                f"cannot bundle plutus-verify into image and the manifest "
+                f"declares scripts that need the SDK (expected.metrics is "
+                f"non-empty). Refusing to build a degraded image. "
+                f"Underlying error: {exc}"
+            ) from exc
         sdk_wheel_basename = None
         _sdk_bundle_error = str(exc)
 
@@ -251,9 +263,27 @@ def _compare_metrics(
     name → value lookup, and compares each expected metric. Locator dispatch
     is gone — metrics are identified by canonical snake_case name only.
 
-    ``step_results`` is currently unused — reserved for future use (e.g.,
-    correlating step exit codes with metric absence to produce richer diagnostics).
+    If the step itself failed (non-zero exit, or a preflight error), the
+    metric comparisons are suppressed and each declared metric is reported
+    as failed-due-to-step-failure. This prevents the verifier from comparing
+    against a stale results.json from a prior run and reporting "ok" for a
+    step whose actual run produced nothing.
     """
+    sr = step_results.get(er.step_id)
+    if sr is not None and (sr.exit_code != 0 or sr.preflight_error):
+        reason = (
+            f"preflight error: {sr.preflight_error}"
+            if sr.preflight_error
+            else f"step exited {sr.exit_code}"
+        )
+        detail = f"step '{er.step_id}' failed ({reason}); metric not evaluated"
+        return {
+            h.name: ExpectedMetricResult(
+                name=h.name, ok=False, actual=None, expected=h.value, detail=detail
+            )
+            for h in er.metrics
+        }
+
     try:
         results = load_results(repo_path, step_id=er.step_id)
     except MissingResultsError as exc:

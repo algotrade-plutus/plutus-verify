@@ -505,14 +505,55 @@ def test_run_v2_pipeline_stages_sdk_wheel_and_passes_basename_to_dockerfile_gen(
     )
 
 
-def test_run_v2_pipeline_handles_sdk_bundle_error_gracefully(
+def test_run_v2_pipeline_raises_sdk_bundle_error_when_metrics_required(
     tmp_path, monkeypatch
 ):
-    """If ensure_plutus_wheel raises SdkBundleError, the pipeline still runs,
-    the dockerfile has no .plutus/build/ reference, and notes surface the
-    reason."""
+    """When the manifest declares expected.metrics (scripts will need the SDK),
+    a bundling failure is FATAL — the pipeline refuses to build a degraded
+    image that would crash on `import plutus_verify` inside the container."""
     _stage_repo(tmp_path)
     manifest = load_manifest_from_yaml_text(_YAML)
+
+    def boom(build_ctx: Path) -> Path:
+        raise SdkBundleError("test reason")
+
+    monkeypatch.setattr(orch_mod, "ensure_plutus_wheel", boom)
+
+    runner = MagicMock()
+    runner.run.return_value = MagicMock(
+        exit_code=0, stdout="", stderr="", duration_seconds=0.1
+    )
+
+    with pytest.raises(SdkBundleError) as exc_info:
+        run_v2_pipeline(
+            manifest,
+            repo_path=tmp_path,
+            image_builder=MagicMock(return_value="img"),
+            runner=runner,
+            vision_client=None,
+            secrets={},
+        )
+
+    msg = str(exc_info.value)
+    assert "Refusing to build a degraded image" in msg
+    assert "test reason" in msg
+    assert exc_info.value.__cause__ is not None
+
+
+def test_run_v2_pipeline_handles_sdk_bundle_error_gracefully_when_no_metrics(
+    tmp_path, monkeypatch
+):
+    """If the manifest has NO expected.metrics, the scripts don't need the SDK
+    (they're hand-rolling JSON or just producing artifacts). Bundling failure
+    degrades gracefully: dockerfile has no .plutus/build/ reference, notes
+    surface the reason."""
+    _stage_repo(tmp_path)
+    # Manifest variant with empty expected.metrics for both steps.
+    yaml_no_metrics = _YAML.replace(
+        "    metrics:\n      - name: sharpe\n        value: 0.85\n        tolerance: {kind: relative, value: 0.05}\n",
+        "    metrics: []\n",
+    )
+    manifest = load_manifest_from_yaml_text(yaml_no_metrics)
 
     def boom(build_ctx: Path) -> Path:
         raise SdkBundleError("test reason")
@@ -529,9 +570,6 @@ def test_run_v2_pipeline_handles_sdk_bundle_error_gracefully(
     runner.run.return_value = MagicMock(
         exit_code=0, stdout="", stderr="", duration_seconds=0.1
     )
-
-    with pv_step("in_sample", repo_path=tmp_path) as r:
-        r.metric("sharpe", 0.86, unit="ratio")
 
     result = run_v2_pipeline(
         manifest,
@@ -552,3 +590,41 @@ def test_run_v2_pipeline_handles_sdk_bundle_error_gracefully(
         if "SDK wheel not staged" in note and "test reason" in note
     ]
     assert matched, f"Expected SDK error note, got: {result.notes}"
+
+
+def test_compare_metrics_skips_when_step_failed(tmp_path):
+    """If a step exits non-zero, declared metrics are reported as
+    not-evaluated rather than blindly comparing against any stale results.json
+    on disk. Prevents the stale-results false-positive class of bug."""
+    _stage_repo(tmp_path)
+    manifest = load_manifest_from_yaml_text(_YAML)
+
+    # Stale results.json that happens to match the manifest exactly.
+    with pv_step("in_sample", repo_path=tmp_path) as r:
+        r.metric("sharpe", 0.85, unit="ratio")
+
+    image_builder = MagicMock(return_value="img")
+    runner = MagicMock()
+    # in_sample step exits non-zero (script crashed).
+    def fake_run(**kwargs):
+        if "backtest" in kwargs.get("command", ""):
+            return MagicMock(exit_code=1, stdout="", stderr="boom",
+                             duration_seconds=0.1)
+        return MagicMock(exit_code=0, stdout="", stderr="",
+                         duration_seconds=0.1)
+    runner.run.side_effect = fake_run
+
+    result = run_v2_pipeline(
+        manifest,
+        repo_path=tmp_path,
+        image_builder=image_builder,
+        runner=runner,
+        vision_client=None,
+        secrets={},
+    )
+
+    hr = result.metric_results["in_sample"]["sharpe"]
+    assert hr.ok is False
+    assert hr.actual is None
+    assert "step 'in_sample' failed" in hr.detail
+    assert "step exited 1" in hr.detail

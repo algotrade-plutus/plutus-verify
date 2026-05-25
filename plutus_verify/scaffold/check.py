@@ -1,6 +1,7 @@
 """`plutus check`: run the native v2 pipeline locally against a working copy."""
 from __future__ import annotations
 
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -24,6 +25,16 @@ def scaffold_check(
     secrets: dict[str, str],
     force_data_tier: Optional[str] = None,
 ) -> CheckResult:
+    # Wipe any stale .plutus/run/ artifacts so the comparison phase reads
+    # only what THIS run wrote. Without this guard, a previous host-side or
+    # container-side run can leave results.json files that match the manifest
+    # exactly (because the manifest was snapshotted from them), producing
+    # false-positive "ok" comparisons even when this run's step crashed.
+    repo_path = Path(repo_path).resolve()
+    run_dir = repo_path / ".plutus" / "run"
+    if run_dir.exists():
+        shutil.rmtree(run_dir, ignore_errors=True)
+
     manifest = load_manifest(repo_path)
     runtime = run_v2_pipeline(
         manifest,
