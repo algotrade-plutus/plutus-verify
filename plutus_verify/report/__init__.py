@@ -4,7 +4,24 @@ from __future__ import annotations
 import enum
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Literal, Optional
+
+StageOutcome = Literal["ok", "skipped", "failed", "partial"]
+
+
+def outcome_from_counts(*, ok: int, failed: int) -> StageOutcome:
+    """Pick a stage outcome from per-item counts.
+
+    ``failed`` dominates: any failure makes the stage failed. Otherwise ``ok``
+    iff at least one item succeeded, else ``skipped`` (e.g., no work to do).
+    Use ``"partial"`` only when the caller has explicit partial semantics — it
+    is not derivable from counts alone.
+    """
+    if failed:
+        return "failed"
+    if ok:
+        return "ok"
+    return "skipped"
 
 from plutus_verify.util.json_io import save_json
 
@@ -27,7 +44,7 @@ class TrailEntry:
     """
 
     stage: str            # "ingest" | "extract" | "build" | "fetch" | "execute" | "compare" | "report"
-    outcome: str          # "ok" | "failed" | "skipped" | "partial"
+    outcome: StageOutcome
     duration_seconds: float
     summary: str
     artifacts: list[str] = field(default_factory=list)

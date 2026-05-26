@@ -18,7 +18,8 @@ pipeline uses this to tee each call's response to disk for auditing.
 from __future__ import annotations
 
 import json
-from typing import Any, Callable, Optional
+from dataclasses import dataclass
+from typing import Any, Callable, Optional, TypedDict
 
 from plutus_verify.extract.client import LLMClient
 from plutus_verify.extract.plan import NINE_STEP_KEYS
@@ -32,7 +33,18 @@ from plutus_verify.extract.templates import (
 )
 from plutus_verify.util.llm_parsing import strip_markdown_fences
 
-__all__ = ["DecomposeError", "decompose"]
+__all__ = ["DecomposeError", "DecomposeResult", "decompose"]
+
+
+class DecomposeResult(TypedDict):
+    """Typed payload returned by :func:`decompose`. Splat-compatible with
+    :func:`plutus_verify.extract.stitch.stitch` (keys match its kwargs)."""
+
+    repo: dict[str, Any]
+    nine_step: dict[str, Any]
+    steps: list[dict[str, Any]]
+    results: list[dict[str, Any]]
+    additional_steps: list[dict[str, Any]]
 
 
 class DecomposeError(RuntimeError):
@@ -234,57 +246,64 @@ def _call_complete_json(
         return client.complete_json(system, user, temperature=temperature)
 
 
+@dataclass(frozen=True)
+class CallConfig:
+    """Stable per-extraction settings shared across all 4 form-filling calls."""
+
+    client: LLMClient
+    temperature: float
+    idle_timeout_seconds: float
+    max_retries: int
+    on_attempt: Optional[_AttemptCallback] = None
+
+
 def _run_call(
+    config: CallConfig,
     *,
     call_index: int,
     label: str,
-    client: LLMClient,
     user_prompt: str,
     parser: _CallParser,
-    temperature: float,
-    idle_timeout_seconds: float,
-    max_retries: int,
-    on_attempt: Optional[_AttemptCallback],
 ) -> Any:
     """Execute one form-filling call with retry-on-parse-failure.
 
     Each attempt sends the same user prompt (plus an appended error context
     on retries). The parser raises ``ValueError`` on a structural failure;
-    the orchestrator re-prompts up to ``max_retries`` times.
+    the orchestrator re-prompts up to ``config.max_retries`` times.
     """
     user = user_prompt
     last_error: Exception | None = None
-    for attempt in range(max_retries + 1):
+    for attempt in range(config.max_retries + 1):
         raw = ""
         attempt_label = f"call_{call_index}_{label}_attempt_{attempt}"
         try:
             raw = _call_complete_json(
-                client,
+                config.client,
                 SYSTEM_FILL,
                 user,
-                temperature=temperature,
-                idle_timeout_seconds=idle_timeout_seconds,
+                temperature=config.temperature,
+                idle_timeout_seconds=config.idle_timeout_seconds,
             )
             parsed = parser(raw)
-            if on_attempt:
-                on_attempt(attempt_label, raw, None)
+            if config.on_attempt:
+                config.on_attempt(attempt_label, raw, None)
             return parsed
         except (ValueError, json.JSONDecodeError) as exc:
             last_error = exc
-            if on_attempt:
-                on_attempt(attempt_label, raw, exc)
-            if attempt >= max_retries:
+            if config.on_attempt:
+                config.on_attempt(attempt_label, raw, exc)
+            if attempt >= config.max_retries:
                 break
             user = user_prompt + RETRY_SUFFIX.format(error=str(exc))
         except _NETWORK_ERROR_TYPES as exc:
             last_error = exc
-            if on_attempt:
-                on_attempt(attempt_label, raw, exc)
-            if attempt >= max_retries:
+            if config.on_attempt:
+                config.on_attempt(attempt_label, raw, exc)
+            if attempt >= config.max_retries:
                 break
             # Network errors: same prompt, no need to muddy it with HTTP details.
     raise DecomposeError(
-        f"call '{label}' failed after {max_retries + 1} attempts: "
+        f"call '{label}' failed after {config.max_retries + 1} attempts: "
         f"{type(last_error).__name__}: {last_error}"
     )
 
@@ -300,83 +319,65 @@ def decompose(
     idle_timeout_seconds: float = 180.0,
     per_call_max_retries: int = 1,
     on_attempt: Optional[_AttemptCallback] = None,
-) -> dict[str, Any]:
-    """Run the 4 form-filling calls and return a dict of elements.
+) -> DecomposeResult:
+    """Run the 4 form-filling calls and return the typed elements.
 
-    Returned shape::
-
-        {
-          "repo":            dict,             # Call 1
-          "nine_step":       dict,             # Call 2
-          "steps":           list[dict],       # Call 3
-          "results":         list[dict],       # Call 4
-          "additional_steps": list[dict],      # Call 5 (stub, currently always [])
-        }
-
-    Suitable for passing to :func:`plutus_verify.extract.stitch.stitch`.
+    The returned mapping is suitable for ``stitch(**result)``.
     """
-    repo = _run_call(
-        call_index=0,
-        label="repo",
+    config = CallConfig(
         client=client,
-        user_prompt=CALL1_REPO_USER.format(readme=readme_text),
-        parser=_parse_call1_repo,
         temperature=temperature,
         idle_timeout_seconds=idle_timeout_seconds,
         max_retries=per_call_max_retries,
         on_attempt=on_attempt,
     )
 
+    repo = _run_call(
+        config,
+        call_index=0,
+        label="repo",
+        user_prompt=CALL1_REPO_USER.format(readme=readme_text),
+        parser=_parse_call1_repo,
+    )
+
     nine_step = _run_call(
+        config,
         call_index=1,
         label="nine_step",
-        client=client,
         user_prompt=CALL2_NINE_STEP_USER.format(readme=readme_text),
         parser=_parse_call2_nine_step,
-        temperature=temperature,
-        idle_timeout_seconds=idle_timeout_seconds,
-        max_retries=per_call_max_retries,
-        on_attempt=on_attempt,
     )
 
     # Pass Call 2's present-step keys into Call 3 so the LLM knows which to emit.
     present_step_keys = [k for k in NINE_STEP_KEYS if nine_step.get(k, {}).get("present")]
     steps = _run_call(
+        config,
         call_index=2,
         label="steps",
-        client=client,
         user_prompt=CALL3_STEPS_USER.format(
             readme=readme_text,
             present_steps=json.dumps(present_step_keys),
         ),
         parser=_parse_call3_steps,
-        temperature=temperature,
-        idle_timeout_seconds=idle_timeout_seconds,
-        max_retries=per_call_max_retries,
-        on_attempt=on_attempt,
     )
 
     # Pass Call 3's step ids into Call 4.
     step_ids = [s.get("id") for s in steps if s.get("id")]
     results = _run_call(
+        config,
         call_index=3,
         label="results",
-        client=client,
         user_prompt=CALL4_RESULTS_USER.format(
             readme=readme_text,
             step_ids=json.dumps(step_ids),
         ),
         parser=_parse_call4_results,
-        temperature=temperature,
-        idle_timeout_seconds=idle_timeout_seconds,
-        max_retries=per_call_max_retries,
-        on_attempt=on_attempt,
     )
 
-    return {
-        "repo": repo,
-        "nine_step": nine_step,
-        "steps": steps,
-        "results": results,
-        "additional_steps": [],  # Call 5 stub
-    }
+    return DecomposeResult(
+        repo=repo,
+        nine_step=nine_step,
+        steps=steps,
+        results=results,
+        additional_steps=[],  # Call 5 stub
+    )

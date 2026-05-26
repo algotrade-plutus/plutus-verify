@@ -38,7 +38,9 @@ from plutus_verify.report import (
     FindingKind,
     FindingSeverity,
     RunMeta,
+    StageOutcome,
     TrailEntry,
+    outcome_from_counts,
     write_reports,
 )
 from plutus_verify.spec.runtime import V2RuntimeResult, run_v2_pipeline
@@ -251,86 +253,15 @@ def run_pipeline(
         extract_summary = "reused existing plan.json"
         extract_artifacts = ["plan.json"]
     else:
-        readme_text = ing.readme_path.read_text()
-        progress.stage("extract", "generating plan via 4 LLM calls")
-
-        retry_counts: dict[str, int] = {}
-
-        def _save_attempt(label: str, raw: str, err: Exception | None) -> None:
-            tag = "ok" if err is None else type(err).__name__
-            (inputs.out_dir / f"extract_{label}_{tag}.txt").write_text(raw)
-            if err is not None:
-                (inputs.out_dir / f"extract_{label}_{tag}.err").write_text(str(err))
-            # Emit a single progress line per attempt; never echo the raw JSON.
-            # Label is shaped like "call_2_steps_attempt_1" — pull out the call
-            # number + element name for the readable hint.
-            try:
-                call_num = label.split("_")[1]
-                element = label.split("_")[2]
-            except IndexError:
-                call_num, element = "?", label
-            if err is None:
-                progress.substep(
-                    "extract", f"call {int(call_num) + 1}/4 {element}: ok"
-                )
-            else:
-                retry_counts[element] = retry_counts.get(element, 0) + 1
-                msg = str(err).splitlines()[0] if str(err) else type(err).__name__
-                if len(msg) > 120:
-                    msg = msg[:117] + "..."
-                progress.substep(
-                    "extract",
-                    f"call {int(call_num) + 1}/4 {element}: retry "
-                    f"{retry_counts[element]} — {type(err).__name__}: {msg}",
-                )
-
-        try:
-            plan = extract_plan(
-                readme_text,
-                llm_client,
-                temperature=inputs.config.llm.temperature,
-                max_retries=inputs.config.llm.max_retries,
-                first_attempt_idle_seconds=float(
-                    getattr(inputs.config.llm, "first_attempt_timeout_seconds", 180)
-                ),
-                retry_idle_seconds=float(inputs.config.llm.timeout_seconds),
-                on_attempt=_save_attempt,
-            )
-        except Exception as exc:
-            progress.error("extract", f"{type(exc).__name__}: {exc}")
-            raise
-        plan = _apply_artifact_only_override(plan, inputs.config.overrides.artifact_only_steps)
-        # Validator: only the deterministic Phase 1 runs in production. Phase 2
-        # (LLM second pass) had a tendency to hallucinate no-op corrections; it
-        # was disabled in Iteration 4. The Phase 2 code stays in the validator
-        # module (and its tests) as a safety net for repos we haven't seen yet.
-        plan, validator_fixes = validate_plan(
-            plan,
-            readme_text=readme_text,
-            repo_path=ing.repo_path,
-            llm_client=None,
+        plan, extract_summary = _run_extract_via_llm(
+            ing=ing,
+            inputs=inputs,
+            llm_client=llm_client,
+            plan_path=plan_path,
+            progress=progress,
+            stage_start=stage_start,
         )
-        if validator_fixes:
-            save_json(validator_fixes, inputs.out_dir / "validator_fixes.json")
-            progress.substep(
-                "extract",
-                f"validator applied {len(validator_fixes)} fix(es) to plan",
-            )
-        save_json(_plan_to_dict(plan), plan_path)
-        n_steps = len(plan.steps)
-        n_metrics = sum(len(er.metrics) for er in plan.expected_results)
-        n_charts = sum(len(er.charts) for er in plan.expected_results)
-        n_retries = sum(retry_counts.values())
         extract_outcome = "ok"
-        extract_summary = (
-            f"{n_steps} steps, {n_metrics} metrics, {n_charts} charts"
-            + (f" ({n_retries} retry)" if n_retries else "")
-        )
-        progress.stage(
-            "extract",
-            f"plan.json written — {extract_summary}  "
-            f"({time.monotonic() - stage_start:.1f}s)",
-        )
         extract_artifacts = ["plan.json", "extract_call_*.txt"]
     trail.append(
         TrailEntry(
@@ -449,7 +380,7 @@ def run_pipeline(
         progress.stage(
             "fetch", f"{fetch_summary}  ({time.monotonic() - stage_start:.1f}s)"
         )
-        fetch_outcome = "failed" if n_fail else ("ok" if n_ok else "skipped")
+        fetch_outcome = outcome_from_counts(ok=n_ok, failed=n_fail)
     else:
         progress.stage("fetch", "skipped (use --auto-fetch to enable)")
         fetch_outcome = "skipped"
@@ -514,96 +445,81 @@ def run_pipeline(
     stage_start = time.monotonic()
 
     # ---------- compare ----------
-    n_metrics_total = sum(len(er.metrics) for er in plan.expected_results)
-    n_charts_total = sum(len(er.charts) for er in plan.expected_results)
-    progress.stage(
-        "compare",
-        f"{n_metrics_total} metric(s), {n_charts_total} chart(s)",
-    )
-    step_reports: list[StepReport] = []
-    er_by_step = {er.step_id: er for er in plan.expected_results}
-    n_metrics_pass = 0
-    n_metrics_fail = 0
-    n_charts_pass = 0
-    n_charts_fail = 0
-    for step in plan.steps:
-        result = exec_outputs[step.id]
-        er = er_by_step.get(step.id)
-        sources = MetricSources(stdout=result.stdout, file_root=ing.repo_path)
-        metric_comparisons = (
-            compare_step_metrics(list(er.metrics), sources, match_client=match_client)
-            if er
-            else []
-        )
-        chart_verdicts = (
-            compare_charts(
-                list(er.charts),
-                repo_root=ing.repo_path,
-                vision=vision,
-                match_threshold=inputs.config.charts.match_threshold,
-                enabled=inputs.charts_enabled,
-            )
-            if er
-            else []
-        )
-        step_report = aggregate_step(
-            step_id=step.id,
-            required=step.required,
-            exec_outcome=result.outcome,
-            metrics=metric_comparisons,
-            charts=chart_verdicts,
-            verification_mode=step.verification_mode,
-        )
-        step_reports.append(step_report)
-
-        # Per-step one-liner summary in the progress stream.
-        n_m_pass = sum(1 for m in metric_comparisons if m.pass_)
-        n_m_fail = len(metric_comparisons) - n_m_pass
-        n_c_pass = sum(1 for c in chart_verdicts if c.verdict == "match")
-        n_c_fail = len(chart_verdicts) - n_c_pass
-        n_metrics_pass += n_m_pass
-        n_metrics_fail += n_m_fail
-        n_charts_pass += n_c_pass
-        n_charts_fail += n_c_fail
-        if metric_comparisons or chart_verdicts:
-            parts = []
-            if metric_comparisons:
-                parts.append(f"metrics {n_m_pass}/{len(metric_comparisons)} pass")
-            if chart_verdicts:
-                parts.append(f"charts {n_c_pass}/{len(chart_verdicts)} pass")
-            progress.substep("compare", f"{step.id}: {', '.join(parts)}")
-
-    overall = aggregate_overall(step_reports)
-    compare_summary = (
-        f"metrics {n_metrics_pass}/{n_metrics_pass + n_metrics_fail} pass, "
-        f"charts {n_charts_pass}/{n_charts_pass + n_charts_fail} pass"
-    )
-    progress.stage(
-        "compare", f"{compare_summary}  ({time.monotonic() - stage_start:.1f}s)"
-    )
-    compare_outcome = "ok" if not (n_metrics_fail or n_charts_fail) else "partial"
-    trail.append(
-        TrailEntry(
-            stage="compare",
-            outcome=compare_outcome,
-            duration_seconds=time.monotonic() - stage_start,
-            summary=compare_summary,
-            artifacts=[],
-        )
+    overall, step_reports = _run_compare_stage(
+        plan=plan,
+        exec_outputs=exec_outputs,
+        repo_path=ing.repo_path,
+        vision=vision,
+        match_client=match_client,
+        chart_match_threshold=inputs.config.charts.match_threshold,
+        charts_enabled=inputs.charts_enabled,
+        progress=progress,
+        stage_start=stage_start,
+        trail=trail,
     )
     stage_start = time.monotonic()
 
     # ---------- findings ----------
-    findings: list[Finding] = list(fetch_findings)  # auto-fetch findings first
-    # Each build adjustment becomes a NOTE-level finding (reviewer can audit).
-    _BUILD_KIND_MAP = {
-        "encoding": FindingKind.BUILD_ENCODING,
-        "missing_dep": FindingKind.BUILD_MISSING_DEP,
-        "incomplete_dep": FindingKind.BUILD_INCOMPLETE_DEP,
-        "apt_dev_header": FindingKind.BUILD_INCOMPLETE_DEP,
-        "pin_version": FindingKind.BUILD_INCOMPLETE_DEP,
-        "give_up": FindingKind.BUILD_UPSTREAM_BROKEN,
-    }
+    findings = _build_findings(
+        fetch_findings=fetch_findings,
+        build_adjustments=build_adjustments,
+        step_reports=step_reports,
+    )
+
+    # ---------- report ----------
+    meta = dataclasses.replace(meta, duration_seconds=int(time.monotonic() - start))
+    progress.stage("report", f"verdict: {overall.verdict.value} (exit {overall.exit_code})")
+    # Pre-add the report trail entry so the rendered report includes itself.
+    trail.append(
+        TrailEntry(
+            stage="report",
+            outcome="ok",
+            duration_seconds=time.monotonic() - stage_start,
+            summary=f"verdict: {overall.verdict.value}",
+            artifacts=["report.md", "report.json", "run.log"],
+        )
+    )
+    report_paths = write_reports(
+        out_dir=inputs.out_dir,
+        overall=overall,
+        meta=meta,
+        extraction_notes=list(plan.extraction_notes),
+        nine_step_coverage=_build_nine_step_coverage(plan),
+        findings=findings,
+        verification_trail=trail,
+    )
+    progress.stage(
+        "report",
+        f"written: {report_paths[1]}  {report_paths[0]}  {inputs.out_dir / 'run.log'}",
+    )
+
+    return PipelineResult(
+        plan=plan,
+        overall=overall,
+        meta=meta,
+        out_dir=inputs.out_dir,
+        verification_trail=trail,
+    )
+
+
+_BUILD_KIND_MAP = {
+    "encoding": FindingKind.BUILD_ENCODING,
+    "missing_dep": FindingKind.BUILD_MISSING_DEP,
+    "incomplete_dep": FindingKind.BUILD_INCOMPLETE_DEP,
+    "apt_dev_header": FindingKind.BUILD_INCOMPLETE_DEP,
+    "pin_version": FindingKind.BUILD_INCOMPLETE_DEP,
+    "give_up": FindingKind.BUILD_UPSTREAM_BROKEN,
+}
+
+
+def _build_findings(
+    *,
+    fetch_findings: list[Finding],
+    build_adjustments: list[Any],
+    step_reports: list[StepReport],
+) -> list[Finding]:
+    """Aggregate auto-fetch / build / execute / metric findings into one list."""
+    findings: list[Finding] = list(fetch_findings)
     for adj in build_adjustments:
         findings.append(
             Finding(
@@ -648,41 +564,192 @@ def run_pipeline(
                         ),
                     )
                 )
+    return findings
 
-    # ---------- report ----------
-    meta = dataclasses.replace(meta, duration_seconds=int(time.monotonic() - start))
-    progress.stage("report", f"verdict: {overall.verdict.value} (exit {overall.exit_code})")
-    # Pre-add the report trail entry so the rendered report includes itself.
-    trail.append(
-        TrailEntry(
-            stage="report",
-            outcome="ok",
-            duration_seconds=time.monotonic() - stage_start,
-            summary=f"verdict: {overall.verdict.value}",
-            artifacts=["report.md", "report.json", "run.log"],
+
+def _run_extract_via_llm(
+    *,
+    ing: IngestResult,
+    inputs: PipelineInputs,
+    llm_client: LLMClient,
+    plan_path: Path,
+    progress: Progress,
+    stage_start: float,
+) -> tuple[ExtractedPlan, str]:
+    """Drive the 4-call LLM extraction + validator + persist plan.json.
+
+    Returns ``(plan, summary)``; raises on extract failure (caller logs).
+    """
+    readme_text = ing.readme_path.read_text()
+    progress.stage("extract", "generating plan via 4 LLM calls")
+
+    retry_counts: dict[str, int] = {}
+
+    def _save_attempt(label: str, raw: str, err: Exception | None) -> None:
+        tag = "ok" if err is None else type(err).__name__
+        (inputs.out_dir / f"extract_{label}_{tag}.txt").write_text(raw)
+        if err is not None:
+            (inputs.out_dir / f"extract_{label}_{tag}.err").write_text(str(err))
+        # Label is shaped "call_2_steps_attempt_1" — pull out the call number +
+        # element name for the readable progress hint.
+        try:
+            call_num = label.split("_")[1]
+            element = label.split("_")[2]
+        except IndexError:
+            call_num, element = "?", label
+        if err is None:
+            progress.substep("extract", f"call {int(call_num) + 1}/4 {element}: ok")
+        else:
+            retry_counts[element] = retry_counts.get(element, 0) + 1
+            msg = str(err).splitlines()[0] if str(err) else type(err).__name__
+            if len(msg) > 120:
+                msg = msg[:117] + "..."
+            progress.substep(
+                "extract",
+                f"call {int(call_num) + 1}/4 {element}: retry "
+                f"{retry_counts[element]} — {type(err).__name__}: {msg}",
+            )
+
+    try:
+        plan = extract_plan(
+            readme_text,
+            llm_client,
+            temperature=inputs.config.llm.temperature,
+            max_retries=inputs.config.llm.max_retries,
+            first_attempt_idle_seconds=float(
+                getattr(inputs.config.llm, "first_attempt_timeout_seconds", 180)
+            ),
+            retry_idle_seconds=float(inputs.config.llm.timeout_seconds),
+            on_attempt=_save_attempt,
         )
+    except Exception as exc:
+        progress.error("extract", f"{type(exc).__name__}: {exc}")
+        raise
+    plan = _apply_artifact_only_override(plan, inputs.config.overrides.artifact_only_steps)
+    # Validator: only the deterministic Phase 1 runs in production. Phase 2
+    # (LLM second pass) had a tendency to hallucinate no-op corrections; it
+    # was disabled in Iteration 4. The Phase 2 code stays in the validator
+    # module (and its tests) as a safety net for repos we haven't seen yet.
+    plan, validator_fixes = validate_plan(
+        plan,
+        readme_text=readme_text,
+        repo_path=ing.repo_path,
+        llm_client=None,
     )
-    report_paths = write_reports(
-        out_dir=inputs.out_dir,
-        overall=overall,
-        meta=meta,
-        extraction_notes=list(plan.extraction_notes),
-        nine_step_coverage=_build_nine_step_coverage(plan),
-        findings=findings,
-        verification_trail=trail,
+    if validator_fixes:
+        save_json(validator_fixes, inputs.out_dir / "validator_fixes.json")
+        progress.substep(
+            "extract",
+            f"validator applied {len(validator_fixes)} fix(es) to plan",
+        )
+    save_json(_plan_to_dict(plan), plan_path)
+    n_steps = len(plan.steps)
+    n_metrics = sum(len(er.metrics) for er in plan.expected_results)
+    n_charts = sum(len(er.charts) for er in plan.expected_results)
+    n_retries = sum(retry_counts.values())
+    summary = (
+        f"{n_steps} steps, {n_metrics} metrics, {n_charts} charts"
+        + (f" ({n_retries} retry)" if n_retries else "")
     )
     progress.stage(
-        "report",
-        f"written: {report_paths[1]}  {report_paths[0]}  {inputs.out_dir / 'run.log'}",
+        "extract",
+        f"plan.json written — {summary}  ({time.monotonic() - stage_start:.1f}s)",
     )
+    return plan, summary
 
-    return PipelineResult(
-        plan=plan,
-        overall=overall,
-        meta=meta,
-        out_dir=inputs.out_dir,
-        verification_trail=trail,
+
+def _run_compare_stage(
+    *,
+    plan: ExtractedPlan,
+    exec_outputs: dict[str, ExecResult],
+    repo_path: Path,
+    vision: VisionClient,
+    match_client: Optional[MetricMatchClient],
+    chart_match_threshold: float,
+    charts_enabled: bool,
+    progress: Progress,
+    stage_start: float,
+    trail: list[TrailEntry],
+) -> tuple[OverallReport, list[StepReport]]:
+    """Run the compare stage: per-step metric + chart comparison, then aggregate.
+
+    Mutates ``trail`` by appending the compare TrailEntry.
+    """
+    n_metrics_total = sum(len(er.metrics) for er in plan.expected_results)
+    n_charts_total = sum(len(er.charts) for er in plan.expected_results)
+    progress.stage(
+        "compare",
+        f"{n_metrics_total} metric(s), {n_charts_total} chart(s)",
     )
+    step_reports: list[StepReport] = []
+    er_by_step = {er.step_id: er for er in plan.expected_results}
+    n_metrics_pass = 0
+    n_metrics_fail = 0
+    n_charts_pass = 0
+    n_charts_fail = 0
+    for step in plan.steps:
+        result = exec_outputs[step.id]
+        er = er_by_step.get(step.id)
+        sources = MetricSources(stdout=result.stdout, file_root=repo_path)
+        metric_comparisons = (
+            compare_step_metrics(list(er.metrics), sources, match_client=match_client)
+            if er
+            else []
+        )
+        chart_verdicts = (
+            compare_charts(
+                list(er.charts),
+                repo_root=repo_path,
+                vision=vision,
+                match_threshold=chart_match_threshold,
+                enabled=charts_enabled,
+            )
+            if er
+            else []
+        )
+        step_reports.append(
+            aggregate_step(
+                step_id=step.id,
+                required=step.required,
+                exec_outcome=result.outcome,
+                metrics=metric_comparisons,
+                charts=chart_verdicts,
+                verification_mode=step.verification_mode,
+            )
+        )
+
+        n_m_pass = sum(1 for m in metric_comparisons if m.pass_)
+        n_c_pass = sum(1 for c in chart_verdicts if c.verdict == "match")
+        n_metrics_pass += n_m_pass
+        n_metrics_fail += len(metric_comparisons) - n_m_pass
+        n_charts_pass += n_c_pass
+        n_charts_fail += len(chart_verdicts) - n_c_pass
+        if metric_comparisons or chart_verdicts:
+            parts = []
+            if metric_comparisons:
+                parts.append(f"metrics {n_m_pass}/{len(metric_comparisons)} pass")
+            if chart_verdicts:
+                parts.append(f"charts {n_c_pass}/{len(chart_verdicts)} pass")
+            progress.substep("compare", f"{step.id}: {', '.join(parts)}")
+
+    overall = aggregate_overall(step_reports)
+    compare_summary = (
+        f"metrics {n_metrics_pass}/{n_metrics_pass + n_metrics_fail} pass, "
+        f"charts {n_charts_pass}/{n_charts_pass + n_charts_fail} pass"
+    )
+    progress.stage(
+        "compare", f"{compare_summary}  ({time.monotonic() - stage_start:.1f}s)"
+    )
+    trail.append(
+        TrailEntry(
+            stage="compare",
+            outcome="ok" if not (n_metrics_fail or n_charts_fail) else "partial",
+            duration_seconds=time.monotonic() - stage_start,
+            summary=compare_summary,
+            artifacts=[],
+        )
+    )
+    return overall, step_reports
 
 
 def _run_v2_native_path(
