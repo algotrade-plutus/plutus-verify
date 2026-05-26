@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import enum
-import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Optional
+
+from plutus_verify.util.json_io import save_json
 
 from plutus_verify.compare.metrics import MetricComparison
 from plutus_verify.compare.rubric import (
@@ -132,7 +133,7 @@ def write_reports(
     payload = _build_json_payload(
         overall, meta, extraction_notes, nine_step_coverage, ordered_findings, trail
     )
-    json_path.write_text(json.dumps(payload, indent=2))
+    save_json(payload, json_path)
     md_path.write_text(
         _render_markdown(
             overall, meta, extraction_notes, nine_step_coverage, ordered_findings, trail

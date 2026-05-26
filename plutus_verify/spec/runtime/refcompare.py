@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
+from plutus_verify.util.json_io import load_json
+
 from plutus_verify.spec.manifest import ReferenceOutput
 
 DEFAULT_RELATIVE_TOLERANCE = 0.05
@@ -55,8 +57,8 @@ def _byte_exact(expected: Path, produced: Path) -> CompareResult:
 
 def _json_numeric(expected: Path, produced: Path, tol: float) -> CompareResult:
     try:
-        exp = json.loads(expected.read_text())
-        prod = json.loads(produced.read_text())
+        exp = load_json(expected)
+        prod = load_json(produced)
     except json.JSONDecodeError as e:
         return CompareResult(ok=False, kind="json_numeric_tolerance", detail=f"invalid JSON: {e}")
     diffs: list[str] = []

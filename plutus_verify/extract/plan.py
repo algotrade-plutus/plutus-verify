@@ -11,18 +11,7 @@ from typing import Any, Literal, Optional
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError
 
-# v1 ExtractedPlan copy of the 9-step keys; mirrors plutus_verify.spec.manifest.NINE_STEP_KEYS.
-# Plan 4 is done; extract/plan.py was deliberately kept because `plutus transfer`
-# still depends on it. Deduplication is a future cleanup.
-NINE_STEP_KEYS = (
-    "step_1_hypothesis",
-    "step_2_data_collection",
-    "step_3_data_processing",
-    "step_4_in_sample",
-    "step_5_optimization",
-    "step_6_out_of_sample",
-    "step_7_paper_trading",
-)
+from plutus_verify.constants import NINE_STEP_KEYS
 
 
 class PlanValidationError(ValueError):

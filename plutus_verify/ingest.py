@@ -1,11 +1,12 @@
 """Ingest stage: clone the repo (or use a local path) and capture metadata."""
 from __future__ import annotations
 
-import json
 import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable, Optional
+
+from plutus_verify.util.json_io import load_json, save_json
 
 GitRunner = Callable[[list[str], Optional[Path]], str]
 """Signature: ``runner(args, cwd) -> stdout``. Injectable for tests."""
@@ -48,7 +49,7 @@ def resume_existing_run(run_dir: Path) -> IngestResult:
     meta_path = run_dir / "meta.json"
     if not meta_path.exists():
         raise IngestError(f"meta.json missing in {run_dir}; cannot resume")
-    meta = json.loads(meta_path.read_text())
+    meta = load_json(meta_path)
     # Always return absolute paths — Docker -v rejects relative paths.
     repo_path = Path(meta["repo_path"]).resolve()
     readme_path = Path(meta["readme_path"]).resolve()
@@ -111,10 +112,8 @@ def ingest(
         branch=branch,
         meta_path=meta_path,
     )
-    meta_path.write_text(
-        json.dumps(
-            {k: (str(v) if isinstance(v, Path) else v) for k, v in asdict(result).items()},
-            indent=2,
-        )
+    save_json(
+        {k: (str(v) if isinstance(v, Path) else v) for k, v in asdict(result).items()},
+        meta_path,
     )
     return result

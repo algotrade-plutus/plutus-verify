@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import dataclasses
 import datetime as dt
-import json
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional, Protocol
 
 from plutus_verify import __version__
+from plutus_verify.util.json_io import load_json, save_json
 from plutus_verify.compare.charts import VisionClient, compare_charts
 from plutus_verify.compare.llm_match import MetricMatchClient
 from plutus_verify.compare.metrics import MetricSources, compare_metric, compare_step_metrics
@@ -215,7 +215,7 @@ def run_pipeline(
         _spec_manifest = manifest  # stash for native v2 routing below
         plan = to_extracted_plan(manifest)
         plan = _apply_artifact_only_override(plan, inputs.config.overrides.artifact_only_steps)
-        plan_path.write_text(json.dumps(_plan_to_dict(plan), indent=2))
+        save_json(_plan_to_dict(plan), plan_path)
         n_steps = len(plan.steps)
         n_metrics = sum(len(er.metrics) for er in plan.expected_results)
         n_charts = sum(len(er.charts) for er in plan.expected_results)
@@ -233,19 +233,19 @@ def run_pipeline(
         plan = inputs.pre_loaded_plan
         # Persist so the re-run is auditable
         if not plan_path.exists():
-            plan_path.write_text(json.dumps(_plan_to_dict(plan), indent=2))
+            save_json(_plan_to_dict(plan), plan_path)
         progress.stage("extract", "skipped (pre-loaded plan provided)")
         extract_outcome = "skipped"
         extract_summary = "used pre-loaded plan.json"
         extract_artifacts = ["plan.json"]
     elif inputs.resume_existing and plan_path.exists():
-        plan = parse_plan(json.loads(plan_path.read_text()))
+        plan = parse_plan(load_json(plan_path))
         progress.stage("extract", "skipped (using existing plan.json from out_dir)")
         extract_outcome = "skipped"
         extract_summary = "reused existing plan.json"
         extract_artifacts = ["plan.json"]
     elif _should_skip(inputs.resume_from, "extract") and plan_path.exists():
-        plan = parse_plan(json.loads(plan_path.read_text()))
+        plan = parse_plan(load_json(plan_path))
         progress.stage("extract", "skipped (resume-from past extract)")
         extract_outcome = "skipped"
         extract_summary = "reused existing plan.json"
@@ -311,14 +311,12 @@ def run_pipeline(
             llm_client=None,
         )
         if validator_fixes:
-            (inputs.out_dir / "validator_fixes.json").write_text(
-                json.dumps(validator_fixes, indent=2)
-            )
+            save_json(validator_fixes, inputs.out_dir / "validator_fixes.json")
             progress.substep(
                 "extract",
                 f"validator applied {len(validator_fixes)} fix(es) to plan",
             )
-        plan_path.write_text(json.dumps(_plan_to_dict(plan), indent=2))
+        save_json(_plan_to_dict(plan), plan_path)
         n_steps = len(plan.steps)
         n_metrics = sum(len(er.metrics) for er in plan.expected_results)
         n_charts = sum(len(er.charts) for er in plan.expected_results)

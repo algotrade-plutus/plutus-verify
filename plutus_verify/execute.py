@@ -5,13 +5,13 @@ production uses :class:`DockerRunner` (see :mod:`plutus_verify.runner_docker`).
 """
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional, Protocol
 
 from plutus_verify.compare.rubric import ExecOutcome
 from plutus_verify.extract.plan import ExtractedPlan, Step, StepAlternative
+from plutus_verify.util.json_io import save_json
 from plutus_verify.util.progress import NullProgress, Progress
 
 
@@ -272,7 +272,7 @@ def _persist_step_artifacts(
         "duration_seconds": result.duration_seconds,
         "outcome": result.outcome.value,
     }
-    (artifacts_dir / f"{step_id}.meta.json").write_text(json.dumps(meta, indent=2))
+    save_json(meta, artifacts_dir / f"{step_id}.meta.json")
 
 
 def _emit_step_completion(

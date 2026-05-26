@@ -16,9 +16,10 @@ Architecture:
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass
 from typing import Optional, Protocol
+
+from plutus_verify.util.llm_parsing import strip_markdown_fences
 
 
 @dataclass(frozen=True)
@@ -57,16 +58,6 @@ SYSTEM_PROMPT = (
 )
 
 
-_FENCE_RE = re.compile(
-    r"^\s*```(?:json|JSON)?\s*(?P<body>.*?)\s*```\s*$", re.DOTALL
-)
-
-
-def _strip_fences(text: str) -> str:
-    m = _FENCE_RE.match(text)
-    return m.group("body") if m else text.strip()
-
-
 def eyeball_metrics(
     *,
     metrics: list[MetricMatchRequest],
@@ -79,7 +70,7 @@ def eyeball_metrics(
     caller treats this as ``unverifiable``.
     """
     raw = client.match(metrics=metrics, stdout=stdout)
-    body = _strip_fences(raw)
+    body = strip_markdown_fences(raw)
     try:
         data = json.loads(body)
     except json.JSONDecodeError:

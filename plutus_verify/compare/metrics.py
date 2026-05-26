@@ -10,6 +10,8 @@ from typing import Optional
 from jsonpath_ng import parse as jsonpath_parse
 from jsonpath_ng.exceptions import JsonPathParserError
 
+from plutus_verify.util.json_io import load_json
+
 from plutus_verify.compare.llm_match import (
     MetricMatchClient,
     MetricMatchRequest,
@@ -286,7 +288,7 @@ def _locate_json_file(loc: Locate, root: Path) -> "float | str":
     if not p.exists():
         raise _LocateError(f"file not found: {loc.path}")
     try:
-        data = json.loads(p.read_text())
+        data = load_json(p)
     except json.JSONDecodeError as exc:
         raise _LocateError(f"invalid JSON in {loc.path}: {exc.msg}") from exc
     try:

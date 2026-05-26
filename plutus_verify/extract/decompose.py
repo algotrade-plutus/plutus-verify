@@ -18,7 +18,6 @@ pipeline uses this to tee each call's response to disk for auditing.
 from __future__ import annotations
 
 import json
-import re
 from typing import Any, Callable, Optional
 
 from plutus_verify.extract.client import LLMClient
@@ -31,6 +30,7 @@ from plutus_verify.extract.templates import (
     RETRY_SUFFIX,
     SYSTEM_FILL,
 )
+from plutus_verify.util.llm_parsing import strip_markdown_fences
 
 __all__ = ["DecomposeError", "decompose"]
 
@@ -39,18 +39,8 @@ class DecomposeError(RuntimeError):
     """Per-call retries exhausted; raise to the orchestrator."""
 
 
-_FENCE_RE = re.compile(
-    r"^\s*```(?:json|JSON)?\s*(?P<body>.*?)\s*```\s*$", re.DOTALL
-)
-
-
-def _strip_fences(text: str) -> str:
-    m = _FENCE_RE.match(text)
-    return m.group("body") if m else text.strip()
-
-
 def _parse_json(raw: str) -> Any:
-    body = _strip_fences(raw)
+    body = strip_markdown_fences(raw)
     try:
         return json.loads(body)
     except json.JSONDecodeError as exc:

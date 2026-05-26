@@ -8,6 +8,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal, Optional
 
+from plutus_verify.constants import NINE_STEP_KEYS
+
+__all__ = ["NINE_STEP_KEYS"]
+
 
 @dataclass(frozen=True)
 class Repo:
@@ -108,15 +112,3 @@ class Manifest:
     nine_step_coverage: dict[str, NineStepCoverage] = field(default_factory=dict)
 
 
-# v2 manifest copy of the 9-step keys; mirrors plutus_verify.extract.plan.NINE_STEP_KEYS.
-# Plan 4 is done; extract/plan.py was deliberately kept because `plutus transfer`
-# still depends on it. Deduplication is a future cleanup.
-NINE_STEP_KEYS: tuple[str, ...] = (
-    "step_1_hypothesis",
-    "step_2_data_collection",
-    "step_3_data_processing",
-    "step_4_in_sample",
-    "step_5_optimization",
-    "step_6_out_of_sample",
-    "step_7_paper_trading",
-)
