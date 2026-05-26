@@ -5,7 +5,7 @@ disk; post-build fixers parse a Docker build error log.
 """
 from pathlib import Path
 
-from plutus_verify.build.fixers import (
+from plutus_verify.builder.fixers import (
     run_post_build_fixers,
     run_pre_build_fixers,
 )

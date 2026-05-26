@@ -2,7 +2,7 @@
 
 The Dockerfile shape is fixed by the standard. Authors do not write Dockerfiles
 in the v2 world; they declare env and we emit the build. This module mirrors
-``plutus_verify.build.dockerfile`` but consumes the v2 ``Env`` directly.
+``plutus_verify.builder.dockerfile`` but consumes the v2 ``Env`` directly.
 """
 from __future__ import annotations
 

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from plutus_verify.build.llm_fixer import (
+from plutus_verify.builder.llm_fixer import (
     apply_llm_ops,
     parse_llm_ops,
     suggest_build_fixes,

@@ -9,7 +9,7 @@ from subprocess import CompletedProcess
 
 import pytest
 
-from plutus_verify.build import BuildError, build_with_fixers
+from plutus_verify.builder import BuildError, build_with_fixers
 from plutus_verify.util.progress import Progress
 
 

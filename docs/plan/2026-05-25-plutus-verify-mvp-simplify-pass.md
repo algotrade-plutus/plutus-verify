@@ -24,7 +24,7 @@ Goal: extract duplicated helpers; no behavior change. ~150 LOC saved.
 - Replace inline `_FENCE_RE` / `_strip_fences` in:
   - [extract/decompose.py:42-49](../../plutus_verify/extract/decompose.py#L42-L49)
   - [compare/llm_match.py:60-67](../../plutus_verify/compare/llm_match.py#L60-L67)
-  - [build/llm_fixer.py:51-59](../../plutus_verify/build/llm_fixer.py#L51-L59)
+  - [build/llm_fixer.py:51-59](../../plutus_verify/builder/llm_fixer.py#L51-L59)
 - Add a small test verifying fenced / unfenced / nested-backtick inputs all round-trip correctly.
 
 **A2. Single source of truth for `NINE_STEP_KEYS`**
@@ -43,7 +43,7 @@ Goal: extract duplicated helpers; no behavior change. ~150 LOC saved.
 **A4. Shared subprocess / Docker injector pattern**
 - Add `plutus_verify/util/subprocess.py` with a `SubprocessRunner` protocol + `default_runner` that wraps `subprocess.run` with consistent capture/text/timeout defaults.
 - Replace the bespoke injectors at:
-  - [build/runner.py:100-105](../../plutus_verify/build/runner.py#L100-L105) (`_DockerInvoker`, `_default_docker`)
+  - [build/runner.py:100-105](../../plutus_verify/builder/runner.py#L100-L105) (`_DockerInvoker`, `_default_docker`)
   - [spec/runtime/real_image_builder.py:62-72](../../plutus_verify/spec/runtime/real_image_builder.py#L62-L72) (`_default_docker_runner`)
   - [ingest.py:10-36](../../plutus_verify/ingest.py#L10-L36) (`GitRunner`, `_default_git_runner`)
 - Keep call-site signatures the same; only the type alias + default move.
@@ -93,7 +93,7 @@ Goal: real wall-clock + cost wins. Each item must be verified with a before/afte
 - **Verify**: time the `extract` stage on a known repo before/after; aim for ≥30% wall-clock reduction.
 
 **C2. Read `requirements.txt` once in the LLM-fixer ops loop**
-- [build/llm_fixer.py:137-264](../../plutus_verify/build/llm_fixer.py#L137-L264): `apply_llm_ops()` re-reads requirements.txt from disk per op (line 142, 156, 208, 241). With 3 ops that's 4 reads + 3 writes.
+- [build/llm_fixer.py:137-264](../../plutus_verify/builder/llm_fixer.py#L137-L264): `apply_llm_ops()` re-reads requirements.txt from disk per op (line 142, 156, 208, 241). With 3 ops that's 4 reads + 3 writes.
 - Refactor `apply_llm_ops()` to: read once → mutate in-memory → write once at the end. Ops become pure functions on the parsed lines.
 - **Verify**: build-fixer tests still pass; smoke-test a real fix loop.
 
@@ -111,7 +111,7 @@ Goal: real wall-clock + cost wins. Each item must be verified with a before/afte
 
 - New: `plutus_verify/util/llm_parsing.py`, `plutus_verify/util/json_io.py`, `plutus_verify/util/subprocess.py`, `plutus_verify/constants.py`
 - Major edits: [pipeline.py](../../plutus_verify/pipeline.py), [extract/decompose.py](../../plutus_verify/extract/decompose.py), [report/__init__.py](../../plutus_verify/report/__init__.py)
-- Minor edits: [extract/plan.py](../../plutus_verify/extract/plan.py), [extract/stitch.py](../../plutus_verify/extract/stitch.py), [build/runner.py](../../plutus_verify/build/runner.py), [build/llm_fixer.py](../../plutus_verify/build/llm_fixer.py), [compare/llm_match.py](../../plutus_verify/compare/llm_match.py), [compare/metrics.py](../../plutus_verify/compare/metrics.py), [compare/charts.py](../../plutus_verify/compare/charts.py), [ingest.py](../../plutus_verify/ingest.py), [execute.py](../../plutus_verify/execute.py), [spec/runtime/real_image_builder.py](../../plutus_verify/spec/runtime/real_image_builder.py), [spec/manifest.py](../../plutus_verify/spec/manifest.py)
+- Minor edits: [extract/plan.py](../../plutus_verify/extract/plan.py), [extract/stitch.py](../../plutus_verify/extract/stitch.py), [build/runner.py](../../plutus_verify/builder/runner.py), [build/llm_fixer.py](../../plutus_verify/builder/llm_fixer.py), [compare/llm_match.py](../../plutus_verify/compare/llm_match.py), [compare/metrics.py](../../plutus_verify/compare/metrics.py), [compare/charts.py](../../plutus_verify/compare/charts.py), [ingest.py](../../plutus_verify/ingest.py), [execute.py](../../plutus_verify/execute.py), [spec/runtime/real_image_builder.py](../../plutus_verify/spec/runtime/real_image_builder.py), [spec/manifest.py](../../plutus_verify/spec/manifest.py)
 
 ## Existing code to reuse / build on
 

@@ -21,8 +21,8 @@ from typing import Optional
 
 import click
 
-from plutus_verify.build import build_with_fixers, BuildResult
-from plutus_verify.build.llm_fixer import suggest_build_fixes
+from plutus_verify.builder import build_with_fixers, BuildResult
+from plutus_verify.builder.llm_fixer import suggest_build_fixes
 from plutus_verify.compare.llm_match import OpenAIMetricMatchClient
 from plutus_verify.compare.vision_client import OpenAIVisionClient
 from plutus_verify.config import load_config
