@@ -27,9 +27,9 @@ from plutus_verify.spec.runtime.preflight import (
     assert_inputs_present,
     assert_outputs_present,
 )
-from plutus_verify.spec.runtime.refcompare import (
+from plutus_verify.spec.runtime.artifact_compare import (
     CompareResult,
-    compare_reference_output,
+    compare_artifact,
 )
 from plutus_verify.spec.runtime.results import (
     MalformedResultsError,
@@ -64,7 +64,7 @@ class V2RuntimeResult:
     data_tier_used: str
     step_results: dict[str, StepRuntimeResult] = field(default_factory=dict)
     metric_results: dict[str, dict[str, ExpectedMetricResult]] = field(default_factory=dict)
-    reference_results: dict[str, list[CompareResult]] = field(default_factory=dict)
+    artifact_results: dict[str, list[CompareResult]] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
 
 
@@ -156,7 +156,7 @@ def run_v2_pipeline(
         result.metric_results[er.step_id] = _compare_metrics(
             er, repo_path, result.step_results
         )
-        result.reference_results[er.step_id] = _compare_refs(
+        result.artifact_results[er.step_id] = _compare_artifacts(
             er, repo_path, expected_root, vision_client
         )
 
@@ -339,13 +339,13 @@ def _within_tolerance(actual: Any, expected: Any, tol) -> tuple[bool, str]:
     return actual == expected, "" if actual == expected else f"{actual!r} != {expected!r}"
 
 
-def _compare_refs(er, repo_path: Path, expected_root: Path, vision_client) -> list[CompareResult]:
+def _compare_artifacts(er, repo_path: Path, expected_root: Path, vision_client) -> list[CompareResult]:
     out: list[CompareResult] = []
-    for r in er.reference_outputs:
+    for r in er.artifacts:
         expected_path = expected_root / er.step_id / r.path
         produced_path = repo_path / r.path
         out.append(
-            compare_reference_output(
+            compare_artifact(
                 r,
                 expected_path=expected_path,
                 produced_path=produced_path,

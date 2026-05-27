@@ -16,8 +16,11 @@ BUNDLED_DIR="$ROOT/plutus_verify/_bundled"
 DIST_DIR="$ROOT/dist"
 
 # Pass 1: clean state, build the inner wheel.
+# `build/` is setuptools' staging dir; if a prior build's _bundled/ wheel
+# is still in build/lib/, pass 2 will re-package it alongside the new
+# wheel, producing a fat artifact with two versions inside. Wipe it.
 echo "Pass 1: building wheel with empty _bundled/ ..."
-rm -rf "$DIST_DIR"
+rm -rf "$DIST_DIR" "$ROOT/build"
 find "$BUNDLED_DIR" -name '*.whl' -delete 2>/dev/null || true
 python -m build --wheel
 
@@ -30,7 +33,7 @@ cp "$INNER_WHEEL" "$BUNDLED_DIR/"
 
 # Pass 2: rebuild with the wheel staged inside _bundled/.
 echo "Pass 2: rebuilding wheel with _bundled/ populated ..."
-rm -rf "$DIST_DIR"
+rm -rf "$DIST_DIR" "$ROOT/build"
 python -m build --wheel
 
 OUTER_WHEEL=$(ls "$DIST_DIR"/plutus_verify-*-py3-none-any.whl)

@@ -1,21 +1,27 @@
-"""Comparators for v2 reference outputs.
+"""Comparators for v2 expected artifacts.
 
-Three kinds, each dispatched on ``ReferenceOutput.compare``:
+Three kinds, each dispatched on ``Artifact.compare``:
   - json_numeric_tolerance: deep-walk JSON; numeric values within relative
     tolerance (default 5%); non-numeric must be byte-equal.
   - byte_exact: file bytes identical.
   - visual_similarity: delegates to existing chart-similarity vision client.
+
+Existence semantics differ by kind. ``byte_exact`` and
+``json_numeric_tolerance`` are deterministic — a missing reference file
+is a real failure. ``visual_similarity`` is opt-in along two axes
+(snapshot existence and vision-client wiring); missing either is a
+non-blocking skip surfaced through ``CompareResult.skipped``.
 """
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Optional
 
 from plutus_verify.util.json_io import load_json
 
-from plutus_verify.spec.manifest import ReferenceOutput
+from plutus_verify.spec.manifest import Artifact
 
 DEFAULT_RELATIVE_TOLERANCE = 0.05
 
@@ -25,37 +31,44 @@ class CompareResult:
     ok: bool
     kind: str
     detail: str = ""
+    path: str = ""
+    skipped: bool = False
 
 
-def compare_reference_output(
-    ref: ReferenceOutput,
+def compare_artifact(
+    ref: Artifact,
     *,
     expected_path: Path,
     produced_path: Path,
     vision_client: Optional[Any],
     relative_tolerance: float = DEFAULT_RELATIVE_TOLERANCE,
 ) -> CompareResult:
-    if not expected_path.exists():
-        return CompareResult(ok=False, kind=ref.compare, detail=f"expected file not found: {expected_path}")
-    if not produced_path.exists():
-        return CompareResult(ok=False, kind=ref.compare, detail=f"produced file not found: {produced_path}")
-
     if ref.compare == "byte_exact":
-        return _byte_exact(expected_path, produced_path)
-    if ref.compare == "json_numeric_tolerance":
-        return _json_numeric(expected_path, produced_path, relative_tolerance)
-    if ref.compare == "visual_similarity":
-        return _visual_similarity(ref, expected_path, produced_path, vision_client)
-    return CompareResult(ok=False, kind=ref.compare, detail=f"unknown compare kind: {ref.compare}")
+        result = _byte_exact(expected_path, produced_path)
+    elif ref.compare == "json_numeric_tolerance":
+        result = _json_numeric(expected_path, produced_path, relative_tolerance)
+    elif ref.compare == "visual_similarity":
+        result = _visual_similarity(ref, expected_path, produced_path, vision_client)
+    else:
+        result = CompareResult(ok=False, kind=ref.compare, detail=f"unknown compare kind: {ref.compare}")
+    return replace(result, path=ref.path)
 
 
 def _byte_exact(expected: Path, produced: Path) -> CompareResult:
+    if not expected.exists():
+        return CompareResult(ok=False, kind="byte_exact", detail=f"expected file not found: {expected}")
+    if not produced.exists():
+        return CompareResult(ok=False, kind="byte_exact", detail=f"produced file not found: {produced}")
     if expected.read_bytes() == produced.read_bytes():
         return CompareResult(ok=True, kind="byte_exact")
     return CompareResult(ok=False, kind="byte_exact", detail=f"bytes differ ({expected.name} vs {produced.name})")
 
 
 def _json_numeric(expected: Path, produced: Path, tol: float) -> CompareResult:
+    if not expected.exists():
+        return CompareResult(ok=False, kind="json_numeric_tolerance", detail=f"expected file not found: {expected}")
+    if not produced.exists():
+        return CompareResult(ok=False, kind="json_numeric_tolerance", detail=f"produced file not found: {produced}")
     try:
         exp = load_json(expected)
         prod = load_json(produced)
@@ -103,13 +116,35 @@ def _walk(exp: Any, prod: Any, path: str, tol: float, diffs: list[str]) -> None:
 
 
 def _visual_similarity(
-    ref: ReferenceOutput,
+    ref: Artifact,
     expected: Path,
     produced: Path,
     vision_client: Optional[Any],
 ) -> CompareResult:
+    # Visual checks are opt-in along two axes: a reference image must
+    # exist (`plutus snapshot`) AND a vision client must be configured
+    # (`--visual-check`). Missing either is a non-blocking skip, not a
+    # failure — symmetric to keep the contract from 0.2.5 consistent.
+    if not expected.exists():
+        return CompareResult(
+            ok=True,
+            kind="visual_similarity",
+            skipped=True,
+            detail=f"skipped (no reference at {expected}; run `plutus snapshot` to enable)",
+        )
+    if not produced.exists():
+        return CompareResult(
+            ok=False,
+            kind="visual_similarity",
+            detail=f"produced file not found: {produced}",
+        )
     if vision_client is None:
-        return CompareResult(ok=False, kind="visual_similarity", detail="vision_client required")
+        return CompareResult(
+            ok=True,
+            kind="visual_similarity",
+            skipped=True,
+            detail="skipped (no vision client configured; pass --visual-check to enable)",
+        )
     threshold = ref.threshold or 0.7
     try:
         match = vision_client.match(

@@ -1,5 +1,5 @@
 from plutus_verify.sdk import Run, step
 
-__version__ = "0.1.0"
+__version__ = "0.2.6"
 
 __all__ = ["Run", "step", "__version__"]

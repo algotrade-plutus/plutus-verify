@@ -63,7 +63,7 @@ expected:
         display_name: "Sharpe Ratio"
         value: 0.0           # TODO: replace with the value you got
         tolerance: {kind: relative, value: 0.05}
-    reference_outputs: []
+    artifacts: []
 
 nine_step_coverage:
   step_1_hypothesis: {present: true, section: "TODO"}
@@ -107,11 +107,12 @@ def run_backtest() -> None:
     # stale results behind).
     with pv.step("in_sample") as r:
         # Numeric metrics — must use snake_case names matching manifest's
-        # expected.metrics[].name. Units: ratio | count | currency_usd | seconds.
-        # `ratio` covers Sharpe, returns, drawdowns — always decimals, never percent.
+        # expected.metrics[].name. Units: fraction | ratio | count | currency_usd | seconds.
+        # `fraction` for percent-like metrics (write 42% as 0.42); `ratio` for
+        # unbounded dimensionless like Sharpe. `percent` is rejected — always decimals.
         r.metric("sharpe_ratio",     sharpe_ratio,     unit="ratio")
-        r.metric("maximum_drawdown", maximum_drawdown, unit="ratio")
-        r.metric("annual_return",    annual_return,    unit="ratio")
+        r.metric("maximum_drawdown", maximum_drawdown, unit="fraction")
+        r.metric("annual_return",    annual_return,    unit="fraction")
 
         # Artifacts — files your script produced. Path is repo-relative.
         # Kinds: chart | csv | json | image | other.

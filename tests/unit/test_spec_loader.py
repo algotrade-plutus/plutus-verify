@@ -130,7 +130,7 @@ expected:
         display_name: "Sharpe Ratio"
         value: 0.85
         tolerance: {kind: relative, value: 0.05}
-    reference_outputs:
+    artifacts:
       - path: "out/metrics.json"
         compare: json_numeric_tolerance
       - path: "out/equity.png"
@@ -148,7 +148,7 @@ nine_step_coverage:
     assert m.data_sources.processed[0].satisfies == ("data_collection", "data_processing")
     assert m.expected[0].metrics[0].value == 0.85
     assert m.expected[0].metrics[0].display_name == "Sharpe Ratio"
-    assert m.expected[0].reference_outputs[1].threshold == 0.7
+    assert m.expected[0].artifacts[1].threshold == 0.7
     assert m.nine_step_coverage["step_1_hypothesis"].present is True
 
 
@@ -161,7 +161,7 @@ def test_load_metric_without_display_name_keeps_it_none():
       - name: sharpe_ratio
         value: 0.85
         tolerance: {kind: relative, value: 0.05}
-    reference_outputs: []""",
+    artifacts: []""",
     )
     m = load_manifest_from_yaml_text(yaml_text)
     h = m.expected[0].metrics[0]

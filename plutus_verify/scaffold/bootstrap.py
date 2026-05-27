@@ -6,7 +6,7 @@ Reads ``.plutus/run/<step_id>/results.json`` files left behind by
 emits a partially-filled manifest draft. Fields that can be discovered
 mechanically (schema_version, env.python_version, env.requirements_file,
 repo.name, per-step ``outputs``, ``expected.metrics``,
-``expected.reference_outputs``) are auto-filled. Fields requiring domain
+``expected.artifacts``) are auto-filled. Fields requiring domain
 knowledge (``env.os_packages``, ``secrets``, ``data_sources``,
 per-step ``command`` / ``nine_step`` / ``inputs`` / ``depends_on``,
 ``nine_step_coverage``) are marked with grep-friendly ``TODO_*`` sentinels.
@@ -256,7 +256,7 @@ def _build_manifest_dict(
             r_map["path"] = artifact.path
             r_map["compare"] = _artifact_compare_kind(artifact.kind)
             ref_seq.append(r_map)
-        expected_block["reference_outputs"] = ref_seq
+        expected_block["artifacts"] = ref_seq
 
         if results.metrics:
             steps_with_metrics += 1

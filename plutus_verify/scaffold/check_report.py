@@ -97,4 +97,16 @@ def _render_step(step: Step, runtime: V2RuntimeResult) -> list[str]:
             if hr.detail:
                 line += f"  [{hr.detail}]"
             out.append(line)
+
+    artifacts = runtime.artifact_results.get(step.id, [])
+    for r in artifacts:
+        if r.skipped:
+            marker = "SKIP"
+        elif r.ok:
+            marker = "ok"
+        else:
+            marker = "FAIL"
+        label = f"{r.kind} {r.path}".strip()
+        detail = f"  [{r.detail}]" if r.detail else ""
+        out.append(f"      {marker} {label}{detail}")
     return out

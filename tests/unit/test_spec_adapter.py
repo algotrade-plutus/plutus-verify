@@ -25,7 +25,7 @@ expected:
         display_name: "Sharpe Ratio"
         value: 0.85
         tolerance: {kind: relative, value: 0.05}
-    reference_outputs: []
+    artifacts: []
 nine_step_coverage:
   step_4_in_sample: {present: true, section: "Backtest"}
 """

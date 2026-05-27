@@ -370,7 +370,18 @@ def init_cmd(repo_path: Path, force: bool) -> None:
     type=click.Choice(["processed", "raw", "code", "auto"]),
     default="auto",
 )
-def check_cmd(repo_path: Path, secrets_from_env: bool, data_tier: str) -> None:
+@click.option(
+    "--visual-check",
+    is_flag=True,
+    help=(
+        "enable visual_similarity reference comparisons (requires PLUTUS_VISION_ENDPOINT "
+        "and PLUTUS_VISION_MODEL env vars; optionally PLUTUS_VISION_API_KEY). "
+        "When disabled (default), visual_similarity entries in the manifest are skipped."
+    ),
+)
+def check_cmd(
+    repo_path: Path, secrets_from_env: bool, data_tier: str, visual_check: bool
+) -> None:
     """Run the v2 pipeline locally against a working copy."""
     import os
 
@@ -378,6 +389,22 @@ def check_cmd(repo_path: Path, secrets_from_env: bool, data_tier: str) -> None:
     from plutus_verify.scaffold.check_report import render_check_report
     from plutus_verify.spec.loader import ManifestLoadError, load_manifest
     from plutus_verify.spec.runtime import BuildError, make_image_builder
+
+    vision_client = None
+    if visual_check:
+        endpoint = os.environ.get("PLUTUS_VISION_ENDPOINT")
+        model = os.environ.get("PLUTUS_VISION_MODEL")
+        if not endpoint or not model:
+            click.echo(
+                "error: --visual-check requires PLUTUS_VISION_ENDPOINT and "
+                "PLUTUS_VISION_MODEL env vars to be set",
+                err=True,
+            )
+            ctx = click.get_current_context()
+            ctx.exit(2)
+            return
+        api_key = os.environ.get("PLUTUS_VISION_API_KEY", "not-needed")
+        vision_client = OpenAIVisionClient(endpoint=endpoint, model=model, api_key=api_key)
 
     try:
         from plutus_verify.runner_docker import DockerRunner
@@ -388,7 +415,7 @@ def check_cmd(repo_path: Path, secrets_from_env: bool, data_tier: str) -> None:
             Path(repo_path),
             image_builder=make_image_builder(),
             runner=DockerRunner(),
-            vision_client=None,
+            vision_client=vision_client,
             secrets=secrets,
             force_data_tier=None if data_tier == "auto" else data_tier,
         )
@@ -418,7 +445,7 @@ def check_cmd(repo_path: Path, secrets_from_env: bool, data_tier: str) -> None:
 @click.argument("repo_path", type=click.Path(path_type=Path, file_okay=False), default=".")
 @click.option("--no-run", is_flag=True, help="don't run check first; snapshot existing outputs")
 @click.option(
-    "--no-reference-outputs",
+    "--no-artifacts",
     is_flag=True,
     default=False,
     help="Don't copy step output files into .plutus/expected/.",
@@ -432,7 +459,7 @@ def check_cmd(repo_path: Path, secrets_from_env: bool, data_tier: str) -> None:
 def snapshot_cmd(
     repo_path: Path,
     no_run: bool,
-    no_reference_outputs: bool,
+    no_artifacts: bool,
     no_metrics: bool,
 ) -> None:
     """Capture step outputs into .plutus/expected/ and fill metric values."""
@@ -450,7 +477,7 @@ def snapshot_cmd(
     res = scaffold_snapshot(
         Path(repo_path),
         run_check_first=False,
-        update_reference_outputs=not no_reference_outputs,
+        update_artifacts=not no_artifacts,
         update_metric_values=not no_metrics,
     )
     click.echo(f"  files copied: {res.files_copied}")

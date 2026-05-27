@@ -6,6 +6,7 @@ declaratively types the runtime environment, lists step inputs+outputs as a
 hard contract, and tiers data acquisition (download > preprocess > run).
 """
 from plutus_verify.spec.manifest import (
+    Artifact,
     DataSource,
     DataSourceTiers,
     Env,
@@ -13,7 +14,6 @@ from plutus_verify.spec.manifest import (
     ExpectedMetric,
     Manifest,
     NineStepCoverage,
-    ReferenceOutput,
     Repo,
     Secret,
     Step,
@@ -22,6 +22,7 @@ from plutus_verify.spec.manifest import (
 from plutus_verify.spec.loader import ManifestLoadError, load_manifest
 
 __all__ = [
+    "Artifact",
     "DataSource",
     "DataSourceTiers",
     "Env",
@@ -30,7 +31,6 @@ __all__ = [
     "Manifest",
     "ManifestLoadError",
     "NineStepCoverage",
-    "ReferenceOutput",
     "Repo",
     "Secret",
     "Step",

@@ -241,13 +241,13 @@ def test_render_notes_appended():
     manifest = _make_manifest(steps=steps)
     runtime = _make_runtime(
         step_results={"in_sample": _ok_sr("in_sample")},
-        notes=["SDK wheel staged: plutus_verify-0.1.0-py3-none-any.whl", "data tier: raw resolved"],
+        notes=["SDK wheel staged: plutus_verify-0.2.6-py3-none-any.whl", "data tier: raw resolved"],
     )
 
     lines = render_check_report(manifest, runtime)
     notes_idx = next((i for i, l in enumerate(lines) if l == "Notes:"), None)
     assert notes_idx is not None, lines
-    assert lines[notes_idx + 1] == "  - SDK wheel staged: plutus_verify-0.1.0-py3-none-any.whl"
+    assert lines[notes_idx + 1] == "  - SDK wheel staged: plutus_verify-0.2.6-py3-none-any.whl"
     assert lines[notes_idx + 2] == "  - data tier: raw resolved"
 
 

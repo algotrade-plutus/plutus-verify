@@ -290,7 +290,7 @@ What got auto-filled (≈70% of the manifest):
 - `env.requirements_file: requirements.txt` (detected from filesystem)
 - `steps[].id` for `in_sample_backtest` and `out_of_sample_backtest` (from `.plutus/run/` directories), with `network: none`, `timeout_seconds: 1800`, `outputs:` filled from each step's artifact paths
 - All 12 `expected.metrics[]` entries (6 in-sample + 6 OOS) with `name`, `display_name` (auto-converted from snake_case), current `value`, and default `tolerance: {kind: relative, value: 0.05}`
-- `expected.reference_outputs[]` per step with `compare: visual_similarity` for chart artifacts
+- `expected.artifacts[]` per step with `compare: visual_similarity` for chart artifacts
 
 What needs your input (≈30% — the 8 unknowables, marked with `TODO_*` sentinels you can grep):
 

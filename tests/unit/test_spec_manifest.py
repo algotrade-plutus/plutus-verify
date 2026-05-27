@@ -1,5 +1,6 @@
 """Tests for the v2 Manifest dataclasses."""
 from plutus_verify.spec.manifest import (
+    Artifact,
     DataSource,
     DataSourceTiers,
     Env,
@@ -7,7 +8,6 @@ from plutus_verify.spec.manifest import (
     ExpectedMetric,
     Manifest,
     NineStepCoverage,
-    ReferenceOutput,
     Repo,
     Secret,
     Step,
@@ -90,8 +90,8 @@ def test_metric_accepts_optional_display_name():
     assert h.display_name == "Sharpe Ratio"
 
 
-def test_reference_output_with_threshold():
-    r = ReferenceOutput(
+def test_artifact_with_threshold():
+    r = Artifact(
         path="out/equity_curve.png",
         compare="visual_similarity",
         threshold=0.7,

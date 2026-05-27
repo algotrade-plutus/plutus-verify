@@ -55,7 +55,7 @@ expected:
       - name: sharpe
         value: 0.85
         tolerance: {kind: relative, value: 0.05}
-    reference_outputs: []
+    artifacts: []
 nine_step_coverage: {}
 """
 
@@ -208,7 +208,7 @@ expected:
   - step_id: in_sample
     metrics:
 {metrics_yaml}
-    reference_outputs: []
+    artifacts: []
 nine_step_coverage: {{}}
 """
 
@@ -402,7 +402,7 @@ def test_absolute_tolerance_pass_within_bounds(tmp_path):
     manifest = load_manifest_from_yaml_text(yaml)
 
     with pv_step("in_sample", repo_path=tmp_path) as r:
-        r.metric("max_drawdown", -0.21, unit="ratio")  # |diff|=0.01 ≤ 0.02
+        r.metric("max_drawdown", -0.21, unit="fraction")  # |diff|=0.01 ≤ 0.02
 
     result = run_v2_pipeline(
         manifest,
@@ -428,7 +428,7 @@ def test_absolute_tolerance_fail_outside_bounds(tmp_path):
     manifest = load_manifest_from_yaml_text(yaml)
 
     with pv_step("in_sample", repo_path=tmp_path) as r:
-        r.metric("max_drawdown", -0.25, unit="ratio")  # |diff|=0.05 > 0.02
+        r.metric("max_drawdown", -0.25, unit="fraction")  # |diff|=0.05 > 0.02
 
     result = run_v2_pipeline(
         manifest,

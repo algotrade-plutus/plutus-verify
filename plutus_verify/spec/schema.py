@@ -31,7 +31,7 @@ _HEADLINE = {
     },
 }
 
-_REFERENCE_OUTPUT = {
+_ARTIFACT = {
     "type": "object",
     "required": ["path", "compare"],
     "properties": {
@@ -162,9 +162,9 @@ MANIFEST_SCHEMA: dict[str, Any] = {
                 "properties": {
                     "step_id": {"type": "string"},
                     "metrics": {"type": "array", "items": _HEADLINE},
-                    "reference_outputs": {
+                    "artifacts": {
                         "type": "array",
-                        "items": _REFERENCE_OUTPUT,
+                        "items": _ARTIFACT,
                     },
                 },
                 "additionalProperties": False,

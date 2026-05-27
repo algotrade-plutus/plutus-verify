@@ -1,8 +1,13 @@
 """JSON-Schema (Draft 2020-12) for the SDK ``results.json`` file.
 
 Canonical units and artifact kinds are enumerated here so the SDK, the
-verifier, and authoring scripts share a single source of truth. The strictness
-is deliberate — ``percent`` is rejected so authors normalize to a ratio.
+verifier, and authoring scripts share a single source of truth.
+
+The dimensionless bucket is split on display intent: ``fraction`` for
+numbers naturally rendered as a percentage (win rate 0.42, max drawdown
+0.15, annual return 0.17), and ``ratio`` for unbounded dimensionless
+numbers (Sharpe 1.7, Sortino, profit factor). ``percent`` is rejected so
+authors always store a decimal — write 42% as 0.42 with ``unit="fraction"``.
 """
 from __future__ import annotations
 
@@ -10,7 +15,7 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
-UNIT_KINDS: tuple[str, ...] = ("ratio", "count", "currency_usd", "seconds")
+UNIT_KINDS: tuple[str, ...] = ("fraction", "ratio", "count", "currency_usd", "seconds")
 ARTIFACT_KINDS: tuple[str, ...] = ("chart", "csv", "json", "image", "other")
 NAME_PATTERN: str = r"^[a-z][a-z0-9_]*$"
 

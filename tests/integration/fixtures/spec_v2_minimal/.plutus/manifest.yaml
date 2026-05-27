@@ -40,7 +40,7 @@ expected:
         display_name: "Sharpe Ratio"
         value: 0.85
         tolerance: {kind: relative, value: 0.05}
-    reference_outputs: []
+    artifacts: []
 nine_step_coverage:
   step_2_data_collection: {present: true, section: "Data"}
   step_3_data_processing: {present: true, section: "Preprocess"}

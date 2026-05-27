@@ -175,13 +175,13 @@ def _write_expected(buf: TextIO, plan: ExtractedPlan) -> None:
         else:
             buf.write("    metrics: []\n")
         if er.charts:
-            buf.write("    reference_outputs:\n")
+            buf.write("    artifacts:\n")
             for c in er.charts:
                 buf.write(f"      - path: {_yaml_str(c.produced_path)}\n")
                 buf.write("        compare: visual_similarity\n")
                 buf.write(f"        threshold: 0.7  {_TODO_TAG} tune threshold\n")
         else:
-            buf.write("    reference_outputs: []\n")
+            buf.write("    artifacts: []\n")
     buf.write("\n")
 
 

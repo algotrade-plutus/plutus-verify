@@ -78,7 +78,7 @@ def test_schema_accepts_data_sources_with_satisfies():
     Draft202012Validator(MANIFEST_SCHEMA).validate(d)
 
 
-def test_schema_accepts_expected_with_metric_and_reference_output():
+def test_schema_accepts_expected_with_metric_and_artifact():
     d = _minimal_valid_dict()
     d["expected"].append(
         {
@@ -91,7 +91,7 @@ def test_schema_accepts_expected_with_metric_and_reference_output():
                     "tolerance": {"kind": "relative", "value": 0.05},
                 }
             ],
-            "reference_outputs": [
+            "artifacts": [
                 {
                     "path": "out/equity_curve.png",
                     "compare": "visual_similarity",
@@ -148,7 +148,7 @@ def test_schema_rejects_unknown_compare_kind():
         {
             "step_id": "in_sample",
             "metrics": [],
-            "reference_outputs": [
+            "artifacts": [
                 {"path": "out/x.json", "compare": "fuzzy_magic"}
             ],
         }

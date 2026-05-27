@@ -62,7 +62,7 @@ def _exit_code(manifest, runtime: V2RuntimeResult) -> int:
         for name, hr in hrs.items():
             if not hr.ok:
                 return 1
-    for step_id, refs in runtime.reference_results.items():
+    for step_id, refs in runtime.artifact_results.items():
         for r in refs:
             if not r.ok:
                 return 1

@@ -72,7 +72,7 @@ expected:
       - name: maximum_drawdown
         value: 0.0
         tolerance: {kind: relative, value: 0.05}
-    reference_outputs: []
+    artifacts: []
   - step_id: out_of_sample
     metrics:
       - name: sharpe_ratio
@@ -81,7 +81,7 @@ expected:
       - name: maximum_drawdown
         value: 0.0
         tolerance: {kind: relative, value: 0.05}
-    reference_outputs: []
+    artifacts: []
 
 nine_step_coverage:
   step_1_hypothesis: {present: true, section: "hyp"}
@@ -197,17 +197,17 @@ def test_snapshot_extra_metric_in_results_skipped_silently(tmp_path: Path):
     assert _read_metric_value(tmp_path, "in_sample", "sharpe_ratio") == 0.95
 
 
-def test_snapshot_update_reference_outputs_false_skips_copy(tmp_path: Path):
+def test_snapshot_update_artifacts_false_skips_copy(tmp_path: Path):
     _stage_repo(tmp_path)
     res = scaffold_snapshot(
-        tmp_path, run_check_first=False, update_reference_outputs=False
+        tmp_path, run_check_first=False, update_artifacts=False
     )
     assert res.files_copied == 0
     # The expected/<step>/ subdirectory tree should not have been created.
     expected_root = tmp_path / ".plutus" / "expected"
     # `scaffold_init` creates `.plutus/expected/` itself, but no per-step subdirs.
     assert not any(p.is_dir() for p in expected_root.iterdir()), (
-        f"expected/ subtree should be empty when update_reference_outputs=False; "
+        f"expected/ subtree should be empty when update_artifacts=False; "
         f"got: {list(expected_root.iterdir())}"
     )
 
@@ -219,7 +219,7 @@ def test_snapshot_both_flags_off_is_noop_on_disk(tmp_path: Path):
     res = scaffold_snapshot(
         tmp_path,
         run_check_first=False,
-        update_reference_outputs=False,
+        update_artifacts=False,
         update_metric_values=False,
     )
     assert res.files_copied == 0
@@ -239,10 +239,10 @@ def test_snapshot_handles_multiple_steps_with_metrics(tmp_path: Path):
 
     with pv_step("in_sample", repo_path=tmp_path) as r:
         r.metric("sharpe_ratio", 1.10, unit="ratio")
-        r.metric("maximum_drawdown", 0.18, unit="ratio")
+        r.metric("maximum_drawdown", 0.18, unit="fraction")
     with pv_step("out_of_sample", repo_path=tmp_path) as r:
         r.metric("sharpe_ratio", 0.85, unit="ratio")
-        r.metric("maximum_drawdown", 0.22, unit="ratio")
+        r.metric("maximum_drawdown", 0.22, unit="fraction")
 
     res = scaffold_snapshot(tmp_path, run_check_first=False)
     assert res.metrics_updated == 4

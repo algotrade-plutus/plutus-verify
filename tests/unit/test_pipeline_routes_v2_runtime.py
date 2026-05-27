@@ -53,7 +53,7 @@ def test_pipeline_uses_native_v2_runtime_when_manifest_present(tmp_path, monkeyp
     sentinel.data_tier_used = "code"
     sentinel.step_results = {}
     sentinel.metric_results = {}
-    sentinel.reference_results = {}
+    sentinel.artifact_results = {}
     sentinel.notes = []
     fake_run_v2 = MagicMock(return_value=sentinel)
     monkeypatch.setattr(pmod, "run_v2_pipeline", fake_run_v2)

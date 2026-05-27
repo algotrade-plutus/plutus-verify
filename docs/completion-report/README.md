@@ -10,8 +10,11 @@ completion report.
 | **B** | Output-side standardization | [phase-b-output-side-standardization.md](2026-05-25-phase-b-output-side-standardization.md) (Plan 6 + rename) |
 | **C** | Production polish | [phase-c-production-polish.md](2026-05-25-phase-c-production-polish.md) (Plans 7–9) |
 | **D** | Integrity hardening | [phase-d-integrity-hardening.md](2026-05-25-phase-d-integrity-hardening.md) (Plan 10) |
+| **Post-MVP** | `/simplify` consolidation pass | [simplify-pass.md](2026-05-26-simplify-pass.md) (3 commits on `refactor`) |
+| **0.2.5** | Schema polish + packaging fixes | [schema-polish-and-fixes.md](2026-05-26-schema-polish-and-fixes.md) (first `CHANGELOG.md`) |
 
 For the design history (why each decision was made), see [`docs/plan/`](../plan/).
+For breaking changes and the migration recipe per release, see [`CHANGELOG.md`](../../CHANGELOG.md) at the repo root.
 
 ## TL;DR — what shipped
 

@@ -180,7 +180,7 @@ def test_happy_path_single_step(tmp_path: Path) -> None:
         "in_sample",
         metrics=[
             ("sharpe_ratio", 0.95, "ratio"),
-            ("maximum_drawdown", -0.20, "ratio"),
+            ("maximum_drawdown", -0.20, "fraction"),
         ],
         artifacts=[("equity_curve", "result/backtest/hpr.svg", "chart")],
     )
@@ -209,7 +209,7 @@ def test_happy_path_single_step(tmp_path: Path) -> None:
     assert expected[0]["metrics"][0]["tolerance"]["kind"] == "relative"
     assert expected[0]["metrics"][0]["tolerance"]["value"] == 0.05
 
-    refs = expected[0]["reference_outputs"]
+    refs = expected[0]["artifacts"]
     assert len(refs) == 1
     assert refs[0]["path"] == "result/backtest/hpr.svg"
     assert refs[0]["compare"] == "visual_similarity"
@@ -375,7 +375,7 @@ def test_requirements_txt_honored(tmp_path: Path) -> None:
     assert data["env"]["requirements_file"] == "requirements.txt"
 
 
-def test_reference_outputs_compare_kind(tmp_path: Path) -> None:
+def test_artifacts_compare_kind(tmp_path: Path) -> None:
     repo = _make_repo(tmp_path)
     _write_results(
         repo,
@@ -390,7 +390,7 @@ def test_reference_outputs_compare_kind(tmp_path: Path) -> None:
 
     result = scaffold_bootstrap(repo)
     data = _load_yaml(result.draft_path.read_text())
-    refs = data["expected"][0]["reference_outputs"]
+    refs = data["expected"][0]["artifacts"]
     by_path = {r["path"]: r["compare"] for r in refs}
     assert by_path["out/eq.png"] == "visual_similarity"
     assert by_path["out/metrics.json"] == "json_numeric_tolerance"

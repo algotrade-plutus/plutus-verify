@@ -35,7 +35,7 @@ def scaffold_snapshot(
     runner: Optional[Any] = None,
     vision_client: Optional[Any] = None,
     secrets: Optional[dict[str, str]] = None,
-    update_reference_outputs: bool = True,
+    update_artifacts: bool = True,
     update_metric_values: bool = True,
 ) -> SnapshotResult:
     manifest = load_manifest(repo_path)
@@ -60,7 +60,7 @@ def scaffold_snapshot(
     notes: list[str] = []
     files_copied = 0
 
-    if update_reference_outputs:
+    if update_artifacts:
         expected_root = repo_path / ".plutus" / "expected"
         expected_root.mkdir(parents=True, exist_ok=True)
 

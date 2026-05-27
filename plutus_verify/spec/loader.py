@@ -14,6 +14,7 @@ from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError
 
 from plutus_verify.spec.manifest import (
+    Artifact,
     DataSource,
     DataSourceTiers,
     Env,
@@ -21,7 +22,6 @@ from plutus_verify.spec.manifest import (
     ExpectedMetric,
     Manifest,
     NineStepCoverage,
-    ReferenceOutput,
     Repo,
     Secret,
     Step,
@@ -148,12 +148,12 @@ def _build_expected(d: dict[str, Any]) -> ExpectedBlock:
         )
         for h in d.get("metrics", [])
     )
-    refs = tuple(
-        ReferenceOutput(
+    artifacts = tuple(
+        Artifact(
             path=r["path"],
             compare=r["compare"],
             threshold=r.get("threshold"),
         )
-        for r in d.get("reference_outputs", [])
+        for r in d.get("artifacts", [])
     )
-    return ExpectedBlock(step_id=d["step_id"], metrics=metrics, reference_outputs=refs)
+    return ExpectedBlock(step_id=d["step_id"], metrics=metrics, artifacts=artifacts)

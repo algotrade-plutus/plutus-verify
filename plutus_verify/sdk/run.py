@@ -118,7 +118,9 @@ class Run:
         if unit not in UNIT_KINDS:
             raise ValueError(
                 f"unit must be one of {UNIT_KINDS}; got {unit!r} "
-                f"(note: 'percent' is rejected — normalize to a ratio)"
+                f"(use 'fraction' for percent-like metrics — write 42% as 0.42 — "
+                f"and 'ratio' for unbounded dimensionless like Sharpe; "
+                f"'percent' is rejected to keep representation decimal)"
             )
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ValueError(f"metric value must be a number; got {type(value).__name__}")

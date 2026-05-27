@@ -56,7 +56,7 @@ def _meta() -> RunMeta:
         branch="main",
         run_id="2026-05-15T10-21Z",
         duration_seconds=724,
-        plutus_verify_version="0.1.0",
+        plutus_verify_version="0.2.6",
     )
 
 

@@ -134,8 +134,8 @@ def test_emitted_yaml_translates_charts_to_visual_similarity():
     text = to_v2_manifest_yaml(plan)
     data = yaml.safe_load(text)
     er = data["expected"][0]
-    assert er["reference_outputs"][0]["compare"] == "visual_similarity"
-    assert er["reference_outputs"][0]["path"] == "out/eq.png"
+    assert er["artifacts"][0]["compare"] == "visual_similarity"
+    assert er["artifacts"][0]["path"] == "out/eq.png"
 
 
 def test_emitted_yaml_translates_manual_download_to_data_source():

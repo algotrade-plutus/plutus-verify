@@ -81,7 +81,7 @@ class ExpectedMetric:
 
 
 @dataclass(frozen=True)
-class ReferenceOutput:
+class Artifact:
     path: str
     compare: Literal["json_numeric_tolerance", "visual_similarity", "byte_exact"]
     threshold: Optional[float] = None
@@ -91,7 +91,7 @@ class ReferenceOutput:
 class ExpectedBlock:
     step_id: str
     metrics: tuple[ExpectedMetric, ...] = ()
-    reference_outputs: tuple[ReferenceOutput, ...] = ()
+    artifacts: tuple[Artifact, ...] = ()
 
 
 @dataclass(frozen=True)

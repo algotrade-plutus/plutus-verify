@@ -9,7 +9,7 @@ Full retirement is deferred until the legacy LLM-extract pathway is removed.
 Documented losses (each emits an extraction_notes entry on the returned plan):
   - env.os_packages, env.gpu_required (Plan 2 generates the Dockerfile natively)
   - steps[*].inputs (Plan 2 adds input pre-flight)
-  - reference_outputs of compare != visual_similarity (Plan 2 adds full comparator)
+  - artifacts of compare != visual_similarity (Plan 2 adds full comparator)
   - data_sources.processed entries that span multiple steps (Plan 2 has tier resolver)
   - steps[*].nine_step == None becomes step_4_in_sample placeholder
 """
@@ -181,7 +181,7 @@ def to_extracted_plan(m: Manifest) -> "ExtractedPlan":
         )
 
         chart_refs = []
-        for r in er.reference_outputs:
+        for r in er.artifacts:
             if r.compare == "visual_similarity":
                 chart_refs.append(
                     ExpectedChart(
@@ -192,7 +192,7 @@ def to_extracted_plan(m: Manifest) -> "ExtractedPlan":
                 )
             else:
                 notes.append(
-                    f"v2 reference_outputs path={r.path} compare={r.compare} "
+                    f"v2 artifacts path={r.path} compare={r.compare} "
                     "not supported by legacy pipeline; Plan 2 adds the full comparator."
                 )
 

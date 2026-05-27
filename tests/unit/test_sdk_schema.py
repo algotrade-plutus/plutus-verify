@@ -43,7 +43,7 @@ def _full_valid() -> dict:
 
 
 def test_constants_match_spec() -> None:
-    assert UNIT_KINDS == ("ratio", "count", "currency_usd", "seconds")
+    assert UNIT_KINDS == ("fraction", "ratio", "count", "currency_usd", "seconds")
     assert ARTIFACT_KINDS == ("chart", "csv", "json", "image", "other")
     assert NAME_PATTERN == r"^[a-z][a-z0-9_]*$"
 

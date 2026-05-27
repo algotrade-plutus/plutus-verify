@@ -89,7 +89,7 @@ steps:
 expected:
   - step_id: ghost
     metrics: []
-    reference_outputs: []
+    artifacts: []
 nine_step_coverage: {}
 """
     with pytest.raises(ManifestLoadError, match="expected.*ghost"):

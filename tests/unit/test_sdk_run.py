@@ -26,7 +26,7 @@ def test_public_import_surface() -> None:
 def test_basic_write_emits_canonical_results(tmp_path: Path) -> None:
     with step("in_sample_backtest", repo_path=tmp_path) as r:
         r.metric("sharpe_ratio", 0.9517, unit="ratio")
-        r.metric("maximum_drawdown", -0.20, unit="ratio")
+        r.metric("maximum_drawdown", -0.20, unit="fraction")
         r.artifact("equity_curve", "result/backtest/hpr.svg", kind="chart")
         r.artifact("drawdown_chart", "result/backtest/drawdown.svg")
         r.metadata(seed=2025)
