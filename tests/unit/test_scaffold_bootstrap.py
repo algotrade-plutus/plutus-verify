@@ -113,6 +113,18 @@ def test_detect_requirements_file_absent(tmp_path: Path) -> None:
     assert _detect_requirements_file(tmp_path) is None
 
 
+def test_detect_requirements_file_prefers_pyproject_toml(tmp_path: Path) -> None:
+    """pyproject.toml is preferred over requirements.txt when both exist."""
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "x"\n')
+    (tmp_path / "requirements.txt").write_text("numpy\n")
+    assert _detect_requirements_file(tmp_path) == "pyproject.toml"
+
+
+def test_detect_requirements_file_pyproject_only(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "x"\n')
+    assert _detect_requirements_file(tmp_path) == "pyproject.toml"
+
+
 def test_detect_repo_name_simple_dir(tmp_path: Path) -> None:
     repo = tmp_path / "my_strategy"
     repo.mkdir()

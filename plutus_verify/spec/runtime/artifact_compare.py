@@ -121,10 +121,12 @@ def _visual_similarity(
     produced: Path,
     vision_client: Optional[Any],
 ) -> CompareResult:
-    # Visual checks are opt-in along two axes: a reference image must
-    # exist (`plutus snapshot`) AND a vision client must be configured
-    # (`--visual-check`). Missing either is a non-blocking skip, not a
-    # failure — symmetric to keep the contract from 0.2.5 consistent.
+    # Missing reference image: non-blocking skip. Missing produced
+    # file: real FAIL (the script didn't write its declared output).
+    # With no vision client, fall back to byte comparison —
+    # byte-identical is a real win; byte mismatch is a non-blocking
+    # WARN (ok=False + skipped=True) since chart non-determinism is
+    # common (timestamps, font rendering, floating-point jitter).
     if not expected.exists():
         return CompareResult(
             ok=True,
@@ -139,11 +141,21 @@ def _visual_similarity(
             detail=f"produced file not found: {produced}",
         )
     if vision_client is None:
+        # `kind` reports what we actually did ("byte_identical")
+        # rather than what was declared ("visual_similarity") — the
+        # report reflects execution, not authorial intent. Internal
+        # kind; never declarable in the manifest schema.
+        if expected.read_bytes() == produced.read_bytes():
+            return CompareResult(
+                ok=True,
+                kind="byte_identical",
+                detail="bytes match (no LLM check needed)",
+            )
         return CompareResult(
-            ok=True,
-            kind="visual_similarity",
+            ok=False,
+            kind="byte_identical",
             skipped=True,
-            detail="skipped (no vision client configured; pass --visual-check to enable)",
+            detail="bytes differ; pass --visual-check for LLM judgment",
         )
     threshold = ref.threshold or 0.7
     try:

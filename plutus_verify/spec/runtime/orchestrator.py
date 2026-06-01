@@ -6,6 +6,7 @@ No adapter to v1 plumbing. Mirrors the v1 pipeline shape but consumes
 """
 from __future__ import annotations
 
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -21,6 +22,10 @@ from plutus_verify.spec.runtime.dockerfile_gen import generate_dockerfile
 from plutus_verify.spec.runtime.sdk_bundle import (
     SdkBundleError,
     ensure_plutus_wheel,
+)
+from plutus_verify.spec.runtime.staging import (
+    extract_outputs,
+    populate_staging,
 )
 from plutus_verify.spec.runtime.preflight import (
     PreflightError,
@@ -231,14 +236,18 @@ def _run_step(
             preflight_error=f"step '{step.id}' has no command and is not satisfied by a data source",
         )
 
-    exec_result = runner.run(
-        image=image,
-        command=step.command,
-        cwd=repo_path,
-        network=step.network,
-        timeout_seconds=step.timeout_seconds,
-        env=secrets,
-    )
+    with tempfile.TemporaryDirectory(prefix=f"plutus-stage-{step.id}-") as staging_str:
+        staging = Path(staging_str)
+        populate_staging(repo_path, staging, step)
+        exec_result = runner.run(
+            image=image,
+            command=step.command,
+            cwd=staging,
+            network=step.network,
+            timeout_seconds=step.timeout_seconds,
+            env=secrets,
+        )
+        extract_outputs(staging, repo_path, step)
     sr = StepRuntimeResult(
         step_id=step.id,
         exit_code=getattr(exec_result, "exit_code", -1),

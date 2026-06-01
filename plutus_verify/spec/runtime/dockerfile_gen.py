@@ -46,12 +46,26 @@ def generate_dockerfile(
             ]
         )
     if env.requirements_file:
-        lines.extend(
-            [
-                f"COPY {env.requirements_file} .",
-                f"RUN pip install --no-cache-dir -r {env.requirements_file}",
-            ]
-        )
+        # pyproject.toml (and PEP-518 build configs in general) needs
+        # `pip install .` against the project directory, not `pip
+        # install -r` which is for line-delimited requirements files.
+        # Detection is on filename rather than extension so future
+        # variants (e.g. setup.py) can be added explicitly.
+        is_project_install = env.requirements_file.endswith("pyproject.toml")
+        if is_project_install:
+            lines.extend(
+                [
+                    f"COPY {env.requirements_file} .",
+                    "RUN pip install --no-cache-dir .",
+                ]
+            )
+        else:
+            lines.extend(
+                [
+                    f"COPY {env.requirements_file} .",
+                    f"RUN pip install --no-cache-dir -r {env.requirements_file}",
+                ]
+            )
     if sdk_wheel_basename:
         # Stage the verifier SDK so author scripts can `import plutus_verify`
         # without touching their own requirements.txt. The wheel is placed in

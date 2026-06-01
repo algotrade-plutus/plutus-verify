@@ -241,13 +241,13 @@ def test_render_notes_appended():
     manifest = _make_manifest(steps=steps)
     runtime = _make_runtime(
         step_results={"in_sample": _ok_sr("in_sample")},
-        notes=["SDK wheel staged: plutus_verify-0.2.6-py3-none-any.whl", "data tier: raw resolved"],
+        notes=["SDK wheel staged: plutus_verify-0.2.10-py3-none-any.whl", "data tier: raw resolved"],
     )
 
     lines = render_check_report(manifest, runtime)
     notes_idx = next((i for i, l in enumerate(lines) if l == "Notes:"), None)
     assert notes_idx is not None, lines
-    assert lines[notes_idx + 1] == "  - SDK wheel staged: plutus_verify-0.2.6-py3-none-any.whl"
+    assert lines[notes_idx + 1] == "  - SDK wheel staged: plutus_verify-0.2.10-py3-none-any.whl"
     assert lines[notes_idx + 2] == "  - data tier: raw resolved"
 
 
@@ -323,3 +323,47 @@ def test_render_step_order_matches_framework_order():
     step2_pos = out.index("Step 2: Data Collection")
     step5_pos = out.index("Step 5: Optimization")
     assert step2_pos < step5_pos, "Step 2 should appear before Step 5 regardless of manifest order"
+
+
+# ---------------------------------------------------------------------------
+# 11) artifact lines render with the right marker per (ok, skipped)
+# ---------------------------------------------------------------------------
+
+def test_render_artifact_warn_marker():
+    """ok=False + skipped=True renders as WARN, not FAIL or SKIP."""
+    from plutus_verify.spec.runtime.artifact_compare import CompareResult
+
+    steps = (
+        Step(id="in_sample", nine_step="step_4_in_sample", required=True, command="x"),
+    )
+    manifest = _make_manifest(steps=steps)
+    runtime = _make_runtime(step_results={"in_sample": _ok_sr("in_sample")})
+    runtime.artifact_results["in_sample"] = [
+        CompareResult(
+            ok=False,
+            skipped=True,
+            kind="byte_identical",
+            path="result/hpr.svg",
+            detail="bytes differ; pass --visual-check for LLM judgment",
+        ),
+        CompareResult(
+            ok=True,
+            skipped=False,
+            kind="byte_identical",
+            path="result/dd.svg",
+            detail="bytes match (no LLM check needed)",
+        ),
+        CompareResult(
+            ok=True,
+            skipped=True,
+            kind="visual_similarity",
+            path="result/inv.svg",
+            detail="skipped (no reference at …; run `plutus snapshot` to enable)",
+        ),
+    ]
+
+    lines = render_check_report(manifest, runtime)
+    artifact_lines = [l for l in lines if "result/" in l]
+    assert any(l.startswith("      WARN") and "result/hpr.svg" in l for l in artifact_lines), artifact_lines
+    assert any(l.startswith("      ok") and "result/dd.svg" in l for l in artifact_lines), artifact_lines
+    assert any(l.startswith("      SKIP") and "result/inv.svg" in l for l in artifact_lines), artifact_lines

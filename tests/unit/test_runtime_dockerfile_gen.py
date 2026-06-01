@@ -128,6 +128,25 @@ def test_dockerfile_sdk_lines_with_no_requirements_file():
     assert final_copy_idx < cmd_idx
 
 
+def test_pyproject_toml_emits_pip_install_dot():
+    """pyproject.toml is a PEP-518 project spec, not a requirements file —
+    must use `pip install .`, not `pip install -r pyproject.toml`."""
+    env = Env(base="python", python_version="3.11", requirements_file="pyproject.toml")
+    df = generate_dockerfile(env, secrets=())
+    assert "COPY pyproject.toml ." in df
+    assert "RUN pip install --no-cache-dir ." in df
+    # Crucially: NOT the `-r` form, which would crash inside the container.
+    assert "pip install --no-cache-dir -r pyproject.toml" not in df
+
+
+def test_requirements_txt_still_uses_dash_r():
+    """Regression guard: the legacy path is unchanged."""
+    env = Env(base="python", python_version="3.11", requirements_file="requirements.txt")
+    df = generate_dockerfile(env, secrets=())
+    assert "RUN pip install --no-cache-dir -r requirements.txt" in df
+    assert "RUN pip install --no-cache-dir ." not in df
+
+
 def test_deterministic_output():
     """Same input → byte-identical Dockerfile, so image hash is stable."""
     env = Env(

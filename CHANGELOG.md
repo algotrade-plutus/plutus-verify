@@ -4,6 +4,326 @@ All notable changes to `plutus-verify` are recorded here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 project is pre-1.0 and uses calendar-driven minor bumps.
 
+## [0.2.10] — 2026-05-29
+
+Closes the runtime-mount verification-correctness gap left open by
+0.2.9. Each `plutus check` step now runs in an isolated staging copy
+of the repo (filtered by `.dockerignore`), not against a live volume
+mount of the maintainer's cwd. Host `.env` and stale `data/cache/`
+files can no longer reach the container at runtime — the
+manifest-declared posture is now actually authoritative.
+
+### Changed — per-step staging dir replaces direct cwd mount
+
+Before (0.2.9 and earlier):
+
+```
+docker run --rm -v {cwd}:/srv/repo plutus-v2:<tag> bash -lc "<cmd>"
+```
+
+The mount overlaid the host's full working tree onto the container
+verbatim — `.dockerignore` (a build-context concept) didn't apply.
+
+After (0.2.10):
+
+```
+1. populate_staging(cwd, staging, step) → copies cwd into a tempdir,
+   respecting .dockerignore (and step.inputs, if declared)
+2. docker run --rm -v {staging}:/srv/repo plutus-v2:<tag> bash -lc "<cmd>"
+3. extract_outputs(staging, cwd, step) → copies back .plutus/run/<step>/
+   (always) and any path matching step.outputs (if declared)
+4. staging dir is removed
+```
+
+Inter-step state still flows via cwd: step N writes outputs back to
+cwd; step N+1's staging dir picks them up at populate time. The mount
+is no longer the shared-state mechanism; cwd is.
+
+Implementation lives in
+[`plutus_verify/spec/runtime/staging.py`](plutus_verify/spec/runtime/staging.py).
+The orchestrator's `_run_step` is the wrap point; the `Runner`
+contract stays duck-typed and manifest-unaware.
+
+New runtime dep: `pathspec>=0.12` (gitignore-style matching).
+
+### Implication for Tier 3 bridge steps
+
+- Host `.env` is invisible to the container — `--secrets-from-env`
+  routing is now actually authoritative.
+- Host `data/cache/*.parquet` from prior runs no longer
+  short-circuits the bridge step. `data_collection` either connects
+  to the DB for real or fails with "missing credentials" — both are
+  the correct outcome.
+
+### Implication for authors
+
+- Existing manifests with empty `step.inputs` continue to work
+  unchanged — populate copies everything not in `.dockerignore`.
+- Existing manifests with empty `step.outputs` get only
+  `.plutus/run/<step>/` back. Scripts that wrote useful files
+  elsewhere will lose them. Declare those paths in `step.outputs:`.
+- Declaring `step.inputs:` opts into tighter filtering — only
+  paths matching those patterns reach staging. Recommended for new
+  manifests; optional for existing ones.
+
+### Migration
+
+Most repos: none. Re-run `plutus check` and observe whether bridge
+steps still pass. If `data_collection` now fails where it used to
+succeed, your prior runs were short-circuiting on host state — wire
+real env vars or a real DB connection and re-run. If a downstream
+step fails because a file it expects in cwd isn't there, declare the
+file in the producing step's `step.outputs`.
+
+### Non-goals
+
+- **Inputs-only mount in the runner.** Per-step staging is a copy,
+  not a mount restriction. The container still sees its entire
+  staging filesystem; only what staging *contains* is restricted.
+- **Validate that scripts only read declared inputs.** Out of scope
+  for 0.2.10; would require ptrace or LSM hooks. Authors are trusted
+  to declare honestly.
+- **Per-step staging cache reuse.** Each step gets a fresh staging
+  dir. Repos where staging is expensive (very large) may want a
+  shared base + per-step diff; deferred until profiling shows real
+  cost.
+
+## [0.2.9] — 2026-05-28
+
+Fixes a cache-leak / secret-leak class of issue surfaced by two real
+incidents on a downstream Tier 3 repo (see
+`docs/completion-report/` for the diagnosis). Without an explicit
+`.dockerignore`, Docker's `COPY . .` pulled `.env`, `.git/`, and
+prior-run caches into every image — masking verification gaps and
+leaking secrets into image layers.
+
+### Added — auto-emit `.dockerignore` baseline
+
+The framework now writes a conservative `.dockerignore` to the repo
+root as part of build-context preparation, **iff the repo doesn't
+already have one** (user-authored `.dockerignore` always wins).
+
+```
+.git/
+.gitignore
+.env
+.env.local
+.env.*.local
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.plutus/run/
+.plutus/build/
+!.plutus/build/plutus_verify-*.whl
+.plutus/Dockerfile.generated
+.DS_Store
+.vscode/
+.idea/
+```
+
+The `!.plutus/build/plutus_verify-*.whl` negate is load-bearing: the
+generated Dockerfile COPYs the SDK wheel from `.plutus/build/`, so
+excluding the parent dir without a re-include would cause every fresh
+`plutus check` to fail at build time with `CopyIgnoredFile`. The
+negate keeps build-cache junk out of the image while letting the
+wheel through.
+
+Implementation lives in
+[`plutus_verify/spec/runtime/real_image_builder.py`](plutus_verify/spec/runtime/real_image_builder.py)
+next to the existing `Dockerfile.generated` write. New public helper:
+`ensure_dockerignore(repo_path)` returns `True` if a baseline was
+written, `False` if an existing file was preserved.
+
+### Why now — the two real incidents
+
+1. **Cache leak.** A `data/cache/*.parquet` left over from a prior
+   `plutus check` got `COPY . .`'d into the next image. The
+   `data_collection` step short-circuited on cache before reaching
+   the bridge-connection code → exit 0 without exercising the
+   declared `network: bridge` posture.
+2. **Secret leak.** With the cache wiped, the same step still passed
+   without DB env vars actually being forwarded. The repo's gitignored
+   `.env` was baked into the image and the container's
+   `pydantic-settings` config read it directly from `/srv/repo/.env`,
+   bypassing manifest secret routing entirely. This is also a real
+   security regression — the DB password becomes recoverable from any
+   image layer.
+
+Both failures share the same root cause: gitignored ≠ Docker-ignored.
+
+### Known limitation — runtime volume mount bypasses `.dockerignore`
+
+`runner_docker.py` runs each step with `-v {cwd}:/srv/repo`. Docker
+volume mounts are unfiltered by design — they overlay the host's
+working directory verbatim, ignoring `.dockerignore` (which is a
+build-context concept, not a runtime one).
+
+Consequence: 0.2.9 closes the **image-layer** leak (a `docker pull`
+consumer can no longer recover `.env` from image layers), but the
+**runtime** leak remains. A Tier 3 bridge step can still:
+
+- Read DB credentials from a host `.env` at runtime, bypassing
+  manifest `--secrets-from-env` routing.
+- Short-circuit on a host `data/cache/*.parquet` left over from a
+  prior `plutus check` run.
+
+If `data_collection` exits 0 suspiciously fast on the second run,
+compare the cache file's mtime pre- and post-check:
+
+    stat -f '%Sm' data/cache/<symbol>/1min/<month>.parquet
+
+Unchanged mtime = bridge short-circuited via the volume mount.
+Workaround until the mount is reworked: `rm -rf data/cache/` between
+runs and verify `--secrets-from-env` routing is wired (no `.env`
+readable on the host, real env vars exported in the shell).
+
+Fixing the mount itself (per-step staging dir, inputs-only mount, or
+no-mount + `docker cp`) is deferred to a future release — it's a
+larger architectural change than 0.2.9's scope.
+
+### Non-goals
+
+- **Not tier-aware.** Tier 1 repos (committed CSVs) need
+  `data/` *kept* in the build context; Tier 3 repos that fetch
+  DB→disk want it excluded. The framework ships a safe universal
+  baseline; the `plutus-transform` Skill appends per-tier exclusions
+  in Phase 3.
+- **No BuildKit `--ignore-file`.** Writing to `.dockerignore` at the
+  conventional location keeps Docker semantics simple and avoids
+  BuildKit-version coupling.
+- **Runtime volume-mount rework.** See "Known limitation" above —
+  out of scope for 0.2.9.
+
+### Migration
+
+No action required. Existing repos with a user-authored
+`.dockerignore` are unaffected — the framework detects it and skips
+the write. Repos without one get the baseline added on next
+`plutus check`; commit it (or `.gitignore` it) as you see fit. Either
+choice is supported.
+
+## [0.2.8] — 2026-05-28
+
+`pyproject.toml` is now a first-class dependency-spec option for the
+generated Docker build. Previously the framework only knew how to do
+`pip install -r <file>` (requirements.txt-style); a manifest pointing
+`env.requirements_file` at `pyproject.toml` would crash at build time.
+
+### Added — pyproject.toml support
+
+- `env.requirements_file` may now be `pyproject.toml`. The Dockerfile
+  generator detects this and emits `RUN pip install --no-cache-dir .`
+  against the project directory (the PEP-518 invocation), rather than
+  `pip install -r pyproject.toml` (which is invalid).
+- `plutus bootstrap`'s file detection now prefers `pyproject.toml`
+  over `requirements.txt` when both exist. Repos with only
+  `requirements.txt` are unchanged.
+- The `plutus-transform` Skill probes pyproject.toml first during
+  Phase 1 and writes the detected filename into the manifest in Phase
+  3. See [skills/plutus-transform/references/v0.2.8.md](skills/plutus-transform/references/v0.2.8.md).
+
+### Schema (unchanged)
+
+`env.requirements_file` was already typed `string | null` in the
+manifest schema; no schema bump needed. The value range just gained
+one more recognised filename. Existing manifests with
+`requirements_file: requirements.txt` continue to build identically.
+
+### Migration
+
+No action required for existing repos. Repos that want to migrate
+from `requirements.txt` to `pyproject.toml` simply replace the file
+and update `.plutus/manifest.yaml`:
+
+```yaml
+env:
+  base: python
+  python_version: "3.11"
+  requirements_file: pyproject.toml   # was: requirements.txt
+```
+
+The Docker build picks up `pip install .` automatically. The strict
+`requirements.txt → pip install -r` path is preserved for backward
+compatibility.
+
+## [0.2.7] — 2026-05-27
+
+Closes a 0.2.6 latent issue (the missing-snapshot strict gate was at
+the dispatcher level, not the comparator level — and even after the
+0.2.6 SKIP fix, `visual_similarity` with no LLM was a pure no-op).
+This release adds a byte-comparison fallback when no vision client is
+configured, plus a new WARN result state for inconclusive divergences.
+
+### Behavior change — `visual_similarity` without an LLM
+
+In 0.2.6, `compare: visual_similarity` with `vision_client=None`
+returned a uniform SKIP, regardless of whether the produced and
+expected files happened to match. 0.2.7 falls back to byte
+comparison:
+
+| Files | 0.2.6 result | 0.2.7 result |
+|---|---|---|
+| byte-identical | `SKIP visual_similarity [no vision client]` | `ok byte_identical [bytes match (no LLM check needed)]` |
+| byte-different | `SKIP visual_similarity [no vision client]` | `WARN byte_identical [bytes differ; pass --visual-check for LLM judgment]` |
+
+The `byte_identical` kind is **internal only** — never declarable in
+the manifest schema (which still accepts only `json_numeric_tolerance`,
+`visual_similarity`, `byte_exact`). It's a result-side label that
+surfaces what the comparator actually did, so the user can tell at a
+glance which path executed. Distinct from the user-declarable
+`byte_exact` (which has strict exit-1-on-mismatch semantics for
+deterministic outputs like CSVs).
+
+Exit-code impact: byte-match raises a previously-silent SKIP to a
+real `ok`; byte-mismatch promotes the SKIP to a visible `WARN` but
+remains non-blocking (exit code unchanged at 0). Users who were
+relying on "no LLM always SKIPs" will see `ok byte_identical` lines
+appear in their reports — that's verification value, not a
+regression.
+
+### Added — `CompareResult` 4-state matrix
+
+The `(ok, skipped)` field combination now distinguishes four outcomes:
+
+| `ok` | `skipped` | meaning | marker | exit-code |
+|---|---|---|---|---|
+| `True` | `False` | verified pass | `ok` | 0 |
+| `True` | `True` | not verified, no evidence of issue | `SKIP` | 0 |
+| `False` | `True` | divergence detected but inconclusive (new) | `WARN` | 0 |
+| `False` | `False` | verified divergence | `FAIL` | 1 |
+
+`WARN` is the new state. It's emitted only by the byte-mismatch
+fallback above. The exit-code logic in
+[`scaffold/check.py`](plutus_verify/scaffold/check.py) was updated:
+`skipped=True` is now non-blocking regardless of `ok`. Previously the
+check was `if not r.ok: return 1`; now it's
+`if not r.ok and not r.skipped: return 1`.
+
+### Added — artifact rendering distinguishes WARN
+
+The `plutus check` report's per-step lines now pick the marker based
+on the full `(ok, skipped)` matrix:
+
+```
+ok   byte_identical    result/backtest/hpr.svg      [bytes match (no LLM check needed)]
+WARN byte_identical    result/backtest/hpr.svg      [bytes differ; pass --visual-check for LLM judgment]
+SKIP visual_similarity result/backtest/hpr.svg      [skipped (no reference at …; run `plutus snapshot`)]
+FAIL visual_similarity result/backtest/hpr.svg      [score=0.42: divergent layout]
+```
+
+### Migration
+
+No manifest, CLI, or SDK changes. No code updates required by
+downstream users. The user-visible diff is purely in the rendered
+report output, and exit codes only change in the direction of
+"previously-silent reports now show useful detail" — not in the
+direction of new failures.
+
 ## [0.2.6] — 2026-05-26
 
 A same-session follow-up to 0.2.5 that closed three items the 0.2.5

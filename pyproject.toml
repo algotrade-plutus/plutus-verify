@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "plutus-verify"
-version = "0.2.6"
+version = "0.2.10"
 description = "Automated reproducibility verifier for PLUTUS-standard trading algorithm repos"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -30,6 +30,7 @@ dependencies = [
   "jsonpath-ng>=1.6",
   "ruamel.yaml>=0.18",
   "httpx>=0.27",
+  "pathspec>=0.12",
 ]
 
 [project.optional-dependencies]

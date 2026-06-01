@@ -162,3 +162,62 @@ def test_check_exit_code_two_when_required_step_fails(tmp_path: Path):
         secrets={},
     )
     assert res.exit_code == 2
+
+
+def test_exit_code_warn_artifact_does_not_fail():
+    """A WARN artifact (ok=False, skipped=True) must not flip exit code to 1.
+
+    Direct test of the `_exit_code` helper so we don't have to drive
+    the full Docker-mocked pipeline just to assert this rule.
+    """
+    from plutus_verify.scaffold.check import _exit_code
+    from plutus_verify.spec.manifest import (
+        DataSourceTiers,
+        Env,
+        Manifest,
+        Repo,
+        Step,
+    )
+    from plutus_verify.spec.runtime.artifact_compare import CompareResult
+    from plutus_verify.spec.runtime.orchestrator import (
+        StepRuntimeResult,
+        V2RuntimeResult,
+    )
+
+    manifest = Manifest(
+        schema_version="2.0",
+        repo=Repo(name="t", primary_language="python"),
+        env=Env(base="python", python_version="3.11", requirements_file="r.txt"),
+        secrets=(),
+        data_sources=DataSourceTiers(),
+        steps=(Step(id="in_sample", nine_step="step_4_in_sample", required=True, command="x"),),
+        expected=(),
+    )
+    runtime = V2RuntimeResult(image="img", data_tier_used="raw")
+    runtime.step_results["in_sample"] = StepRuntimeResult(
+        step_id="in_sample", exit_code=0, duration_seconds=0.1
+    )
+    runtime.artifact_results["in_sample"] = [
+        CompareResult(
+            ok=False,
+            skipped=True,
+            kind="byte_identical",
+            path="result/hpr.svg",
+            detail="bytes differ; pass --visual-check for LLM judgment",
+        ),
+    ]
+    assert _exit_code(manifest, runtime) == 0, (
+        "WARN (ok=False, skipped=True) must not promote exit code to 1"
+    )
+
+    # Sanity check: a true FAIL (ok=False, skipped=False) still flips to 1.
+    runtime.artifact_results["in_sample"] = [
+        CompareResult(
+            ok=False,
+            skipped=False,
+            kind="byte_exact",
+            path="result/data.csv",
+            detail="bytes differ",
+        ),
+    ]
+    assert _exit_code(manifest, runtime) == 1

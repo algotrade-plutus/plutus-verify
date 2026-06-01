@@ -64,6 +64,9 @@ def _exit_code(manifest, runtime: V2RuntimeResult) -> int:
                 return 1
     for step_id, refs in runtime.artifact_results.items():
         for r in refs:
-            if not r.ok:
+            # `skipped=True` is non-blocking regardless of `ok`: it's
+            # how WARN (ok=False, skipped=True) and SKIP (ok=True,
+            # skipped=True) both stay out of the exit code.
+            if not r.ok and not r.skipped:
                 return 1
     return 0

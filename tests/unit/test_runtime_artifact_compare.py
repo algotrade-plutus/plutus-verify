@@ -131,7 +131,11 @@ def test_visual_similarity_missing_produced_fails(tmp_path: Path):
     assert "produced file not found" in r.detail
 
 
-def test_visual_similarity_missing_vision_client_returns_skip(tmp_path: Path):
+def test_visual_similarity_no_llm_bytes_match_passes(tmp_path: Path):
+    # When no vision client is configured, byte-identical files are
+    # a real pass — the report shows `ok byte_identical` rather than
+    # SKIP. Kind reflects what we actually did (byte compare), not
+    # what was declared (visual_similarity).
     exp = tmp_path / "e.png"
     prod = tmp_path / "p.png"
     exp.write_bytes(b"\x89PNG\r\n\x1a\n")
@@ -139,7 +143,25 @@ def test_visual_similarity_missing_vision_client_returns_skip(tmp_path: Path):
     ref = Artifact(path="p.png", compare="visual_similarity")
     r = compare_artifact(ref, expected_path=exp, produced_path=prod, vision_client=None)
     assert r.ok is True
+    assert r.skipped is False
+    assert r.kind == "byte_identical"
+    assert "bytes match" in r.detail
+
+
+def test_visual_similarity_no_llm_bytes_differ_returns_warn(tmp_path: Path):
+    # When no vision client is configured and bytes differ, surface
+    # as WARN (ok=False, skipped=True) — visible in the report but
+    # non-blocking, because chart non-determinism is common.
+    exp = tmp_path / "e.png"
+    prod = tmp_path / "p.png"
+    exp.write_bytes(b"\x89PNG\r\n\x1a\n\x01")
+    prod.write_bytes(b"\x89PNG\r\n\x1a\n\x02")
+    ref = Artifact(path="p.png", compare="visual_similarity")
+    r = compare_artifact(ref, expected_path=exp, produced_path=prod, vision_client=None)
+    assert r.ok is False
     assert r.skipped is True
+    assert r.kind == "byte_identical"
+    assert "bytes differ" in r.detail
     assert "--visual-check" in r.detail
 
 

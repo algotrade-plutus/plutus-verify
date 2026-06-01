@@ -12,6 +12,10 @@ completion report.
 | **D** | Integrity hardening | [phase-d-integrity-hardening.md](2026-05-25-phase-d-integrity-hardening.md) (Plan 10) |
 | **Post-MVP** | `/simplify` consolidation pass | [simplify-pass.md](2026-05-26-simplify-pass.md) (3 commits on `refactor`) |
 | **0.2.5** | Schema polish + packaging fixes | [schema-polish-and-fixes.md](2026-05-26-schema-polish-and-fixes.md) (first `CHANGELOG.md`) |
+| **0.2.7** | Byte fallback for `visual_similarity` + skill split | [v0.2.7-byte-fallback-and-skill-split.md](2026-05-27-v0.2.7-byte-fallback-and-skill-split.md) |
+| **0.2.10** | Per-step staging closes the runtime-mount leak | [v0.2.10-runtime-mount-staging.md](2026-05-29-v0.2.10-runtime-mount-staging.md) |
+| **Tooling** | `plutus-transform` Claude Skill (v1-ish → v2 workflow automation) | [plutus-transform-skill.md](2026-05-27-plutus-transform-skill.md) |
+| **Pause** | 0.2.x leak-closure arc summary + parking-lot for next iteration | [v0.2.x-leak-closure-arc-pause.md](2026-06-01-v0.2.x-leak-closure-arc-pause.md) |
 
 For the design history (why each decision was made), see [`docs/plan/`](../plan/).
 For breaking changes and the migration recipe per release, see [`CHANGELOG.md`](../../CHANGELOG.md) at the repo root.

@@ -100,8 +100,13 @@ def _render_step(step: Step, runtime: V2RuntimeResult) -> list[str]:
 
     artifacts = runtime.artifact_results.get(step.id, [])
     for r in artifacts:
+        # 4-state matrix:
+        #   (ok=T, skipped=F) -> "ok"   verified pass
+        #   (ok=T, skipped=T) -> "SKIP" not verified, no evidence of issue
+        #   (ok=F, skipped=T) -> "WARN" divergence detected but inconclusive
+        #   (ok=F, skipped=F) -> "FAIL" verified divergence
         if r.skipped:
-            marker = "SKIP"
+            marker = "WARN" if not r.ok else "SKIP"
         elif r.ok:
             marker = "ok"
         else:

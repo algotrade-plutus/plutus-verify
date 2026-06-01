@@ -72,7 +72,16 @@ def _detect_python_version(repo_path: Path) -> str:
 
 
 def _detect_requirements_file(repo_path: Path) -> Optional[str]:
-    """Return ``"requirements.txt"`` if present, else ``None``."""
+    """Return the preferred dependency-spec filename, or ``None``.
+
+    Priority: ``pyproject.toml`` (PEP-518, the modern default) → then
+    ``requirements.txt`` (legacy line-delimited spec). The framework's
+    Dockerfile generator dispatches on the filename — pyproject.toml
+    becomes ``pip install .``; requirements.txt becomes
+    ``pip install -r``.
+    """
+    if (repo_path / "pyproject.toml").exists():
+        return "pyproject.toml"
     if (repo_path / "requirements.txt").exists():
         return "requirements.txt"
     return None

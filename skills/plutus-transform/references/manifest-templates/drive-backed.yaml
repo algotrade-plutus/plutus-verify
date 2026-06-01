@@ -1,0 +1,134 @@
+# Manifest template — Tier 2: Drive-backed raw data
+#
+# Use when:
+#   - A Drive/HTTP source ships ALL required data files
+#   - The maintainer prefers not to run a data-collection step in-container
+#   - The data is too large to commit to git
+#
+# Modeled after ProtoMarketMaker (see docs/others/protomarketmaker-upgrade.md).
+#
+# Placeholders the Skill must fill in Phase 3:
+#   <REPO_NAME>           repo.name
+#   <DRIVE_FOLDER_URL>    Google Drive folder URL or http(s):// download URL
+#   <DATA_LAYOUT_PATHS>   relative paths the source provides; must exactly match step `inputs:`
+#   <CHART_OUTPUT_PATHS>  charts the backtest scripts emit
+#   <IS_METRICS> / <OOS_METRICS>   README-claimed values
+#   <PYTHON_VERSION>      e.g. '3.13'
+#
+# Notes:
+#   - `data_sources.raw[]` declares the source. If `expected_layout` matches `data_collection.outputs`
+#     and the download succeeds, the verifier skips the step.
+#   - Keep `data_collection` in steps with a fallback `command:` so the manifest is also usable
+#     when the Drive source is unreachable.
+#   - `kind: google_drive` is the canonical Drive value; `http`, `s3`, `github_release` also supported.
+#   - For authenticated sources, add `secrets_required: [TOKEN_KEY]` to the data_sources entry
+#     and route that secret to `data_collection` in `secrets[].used_by`.
+
+schema_version: '2.0'
+repo:
+  name: <REPO_NAME>
+  primary_language: python
+
+env:
+  base: python
+  python_version: '<PYTHON_VERSION>'
+  requirements_file: requirements.txt
+  os_packages: []
+
+secrets: []   # add entries if the Drive source needs auth, or if any step needs other secrets
+
+data_sources:
+  processed: []
+  raw:
+    - kind: google_drive
+      url: <DRIVE_FOLDER_URL>
+      expected_layout:
+        # <DATA_LAYOUT_PATHS>
+        - data/is/<file>.csv
+        - data/os/<file>.csv
+      satisfies: [data_collection]
+
+steps:
+  - id: data_collection
+    nine_step: step_2_data_collection
+    required: true
+    network: bridge
+    timeout_seconds: 1800
+    command: "python data_loader.py"   # fallback if the Drive source can't be fetched
+    inputs: []
+    outputs:
+      - data/is/<file>.csv
+      - data/os/<file>.csv
+
+  - id: optimization
+    nine_step: step_5_optimization
+    required: true
+    network: none
+    timeout_seconds: 1800
+    verification_mode: artifact_check
+    inputs:
+      - parameter/optimization_parameter.json
+    outputs:
+      - parameter/optimized_parameter.json
+    depends_on: [data_collection]
+
+  - id: in_sample_backtest
+    nine_step: step_4_in_sample
+    required: true
+    network: none   # bridge only if imported modules need network at import time (G1)
+    timeout_seconds: 1800
+    command: "python backtesting.py"
+    inputs:
+      - data/is/<file>.csv
+      - parameter/backtesting_parameter.json
+    outputs:
+      - result/backtest/hpr.svg
+      - result/backtest/drawdown.svg
+    depends_on: [data_collection]
+
+  - id: out_of_sample_backtest
+    nine_step: step_6_out_of_sample
+    required: true
+    network: none
+    timeout_seconds: 1800
+    command: "python evaluation.py"
+    inputs:
+      - data/os/<file>.csv
+      - parameter/optimized_parameter.json
+      - parameter/backtesting_parameter.json
+    outputs:
+      - result/optimization/hpr.svg
+      - result/optimization/drawdown.svg
+    depends_on: [optimization]
+
+expected:
+  - step_id: in_sample_backtest
+    metrics:
+      # <IS_METRICS>
+      - name: sharpe_ratio
+        display_name: Sharpe Ratio
+        value: 0.0
+        tolerance: {kind: relative, value: 0.05}
+    artifacts:
+      - path: result/backtest/hpr.svg
+        compare: visual_similarity
+
+  - step_id: out_of_sample_backtest
+    metrics:
+      # <OOS_METRICS>
+      - name: sharpe_ratio
+        display_name: Sharpe Ratio
+        value: 0.0
+        tolerance: {kind: relative, value: 0.05}
+    artifacts:
+      - path: result/optimization/hpr.svg
+        compare: visual_similarity
+
+nine_step_coverage:
+  step_1_hypothesis: {present: true, section: "Hypothesis"}
+  step_2_data_collection: {present: true, section: "Data"}
+  step_3_data_processing: {present: false, section: null}
+  step_4_in_sample: {present: true, section: "In-sample Backtesting"}
+  step_5_optimization: {present: true, section: "Optimization"}
+  step_6_out_of_sample: {present: true, section: "Out-of-sample Backtesting"}
+  step_7_paper_trading: {present: false, section: null}

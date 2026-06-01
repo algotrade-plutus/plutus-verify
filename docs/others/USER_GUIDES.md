@@ -471,12 +471,21 @@ The verifier will:
 
 1. Stage the bundled `plutus_verify` wheel into `.plutus/build/`
 2. Generate `.plutus/Dockerfile.generated` from `env`
-3. `docker build` an image (tagged by content hash; cached across runs)
-4. Resolve data sources (download Tier 2 if needed)
-5. Run each step in dependency order inside the container
-6. Read each step's `results.json`
-7. Compare every metric against `expected.metrics` within tolerance
-8. Render a grouped 9-step report and exit with the appropriate code
+3. Seed `<repo>/.dockerignore` from a conservative baseline **iff one
+   doesn't already exist** (added in 0.2.9 — closes a class of cache /
+   secret leaks via `COPY . .`). User-authored `.dockerignore` is
+   preserved unchanged; commit or edit yours to customize.
+4. `docker build` an image (tagged by content hash; cached across runs)
+5. Resolve data sources (download Tier 2 if needed)
+6. Run each step in dependency order inside the container. Each step
+   runs in a per-step staging copy of the repo (a tempdir populated
+   from cwd through the `.dockerignore` filter, plus `step.inputs` if
+   declared). Step outputs flow back to cwd via `step.outputs`. The
+   container never mounts cwd directly — that's 0.2.10's closure of
+   the runtime-mount leak.
+7. Read each step's `results.json`
+8. Compare every metric against `expected.metrics` within tolerance
+9. Render a grouped 9-step report and exit with the appropriate code
 
 **Read the output carefully.** A clean pass looks like:
 

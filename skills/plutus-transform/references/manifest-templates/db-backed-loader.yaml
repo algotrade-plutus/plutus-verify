@@ -1,0 +1,149 @@
+# Manifest template — Tier 3: DB-backed data loader
+#
+# Use when:
+#   - A working `data_loader.py` (or equivalent) pulls data from a database
+#   - No Drive/HTTP source ships all required files
+#   - The maintainer is OK with the data_collection step running in-container
+#
+# Modeled after Z-Bounce. See docs/others/zbounce-v1-to-v2-upgrade.md Appendix A.
+#
+# Placeholders the Skill must fill in Phase 3:
+#   <REPO_NAME>          repo.name
+#   <DB_SECRETS>         5 keys typical (HOST/PORT/DATABASE/USER_DB/PASSWORD); rename to whatever the repo uses
+#   <DATA_INPUT_PATHS>   the CSVs/parquets the data step writes
+#   <CHART_OUTPUT_PATHS> charts the backtest scripts emit
+#   <IS_METRICS>         in-sample metrics from README §<…> with README-claimed values
+#   <OOS_METRICS>        out-of-sample metrics likewise
+#   <PYTHON_VERSION>     e.g. '3.13'
+#   <NINE_STEP_SECTIONS> README section names per nine_step
+#
+# Notes:
+#   - DB secrets must list every step that imports the data layer in `used_by` (G1).
+#   - Backtest steps need `network: bridge` IF the data layer instantiates at import time (G1).
+#   - `verification_mode: artifact_check` on optimization keeps `plutus check` fast.
+
+schema_version: '2.0'
+repo:
+  name: <REPO_NAME>
+  primary_language: python
+
+env:
+  base: python
+  python_version: '<PYTHON_VERSION>'
+  requirements_file: requirements.txt
+  os_packages: []
+
+secrets:
+  - key: HOST
+    purpose: Database host
+    used_by: [data_collection, in_sample_backtest, out_of_sample_backtest]
+  - key: PORT
+    purpose: Database port
+    used_by: [data_collection, in_sample_backtest, out_of_sample_backtest]
+  - key: DATABASE
+    purpose: Database name
+    used_by: [data_collection, in_sample_backtest, out_of_sample_backtest]
+  - key: USER_DB
+    purpose: Database user
+    used_by: [data_collection, in_sample_backtest, out_of_sample_backtest]
+  - key: PASSWORD
+    purpose: Database password
+    used_by: [data_collection, in_sample_backtest, out_of_sample_backtest]
+
+data_sources:
+  processed: []
+  raw: []
+
+steps:
+  - id: data_collection
+    nine_step: step_2_data_collection
+    required: true
+    network: bridge
+    timeout_seconds: 1800
+    command: "python data_loader.py"
+    inputs: []
+    outputs:
+      # <DATA_INPUT_PATHS>
+      - data/is/<file>.csv
+      - data/os/<file>.csv
+
+  - id: optimization
+    nine_step: step_5_optimization
+    required: true
+    network: none
+    timeout_seconds: 1800
+    verification_mode: artifact_check
+    inputs:
+      - parameter/optimization_parameter.json
+    outputs:
+      - parameter/optimized_parameter.json
+    depends_on: [data_collection]
+
+  - id: in_sample_backtest
+    nine_step: step_4_in_sample
+    required: true
+    network: bridge   # bridge if any imported module opens a DB connection at import time (G1)
+    timeout_seconds: 1800
+    command: "python backtesting.py"
+    inputs:
+      - data/is/<file>.csv
+      - parameter/backtesting_parameter.json
+    outputs:
+      # <CHART_OUTPUT_PATHS>
+      - result/backtest/hpr.svg
+      - result/backtest/drawdown.svg
+    depends_on: [data_collection]
+
+  - id: out_of_sample_backtest
+    nine_step: step_6_out_of_sample
+    required: true
+    network: bridge
+    timeout_seconds: 1800
+    command: "python evaluation.py"
+    inputs:
+      - data/os/<file>.csv
+      - parameter/optimized_parameter.json
+      - parameter/backtesting_parameter.json
+    outputs:
+      - result/optimization/hpr.svg
+      - result/optimization/drawdown.svg
+    depends_on: [optimization]
+
+expected:
+  - step_id: in_sample_backtest
+    metrics:
+      # <IS_METRICS> — one entry per README-claimed metric. Use unit="fraction" for [0,1] / [-1,0] values.
+      - name: sharpe_ratio
+        display_name: Sharpe Ratio
+        value: 0.0
+        tolerance: {kind: relative, value: 0.05}
+      - name: hpr
+        display_name: HPR
+        value: 0.0
+        tolerance: {kind: relative, value: 0.05}
+    artifacts:
+      # `visual_similarity` is non-blocking SKIP without --visual-check (0.2.6+); see v0.2.6.md
+      - path: result/backtest/hpr.svg
+        compare: visual_similarity
+      - path: result/backtest/drawdown.svg
+        compare: visual_similarity
+
+  - step_id: out_of_sample_backtest
+    metrics:
+      # <OOS_METRICS>
+      - name: sharpe_ratio
+        display_name: Sharpe Ratio
+        value: 0.0
+        tolerance: {kind: relative, value: 0.05}
+    artifacts:
+      - path: result/optimization/hpr.svg
+        compare: visual_similarity
+
+nine_step_coverage:
+  step_1_hypothesis: {present: true, section: "Hypothesis"}
+  step_2_data_collection: {present: true, section: "Data"}
+  step_3_data_processing: {present: false, section: null}
+  step_4_in_sample: {present: true, section: "In-sample Backtesting"}
+  step_5_optimization: {present: true, section: "Optimization"}
+  step_6_out_of_sample: {present: true, section: "Out-of-sample Backtesting"}
+  step_7_paper_trading: {present: false, section: null}
