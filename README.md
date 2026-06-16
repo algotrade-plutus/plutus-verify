@@ -1,180 +1,160 @@
 # plutus-verify
 
-Automated reproducibility verifier for PLUTUS-standard algorithmic-trading
-research repos. Given a repo's git URL, the tool:
+Reproducibility verifier and tooling for **PLUTUS-standard** algorithmic-trading
+research repos.
 
-1. **Ingests** the repo (`git clone --depth=1`).
-2. **Extracts** a structured `ExtractedPlan` from `README.md` with a locally-hosted
-   LLM (Gemma 4 26B A4B by default; any OpenAI-compatible endpoint works).
-3. **Builds** a Docker image with `repo2docker` (auto-detects
-   `requirements.txt`/`environment.yml`/`Dockerfile`/…) and overlays your
-   secrets file.
-4. **Executes** each step of the plan in the container, capturing stdout,
-   stderr, exit code, and artifacts.
-5. **Compares** every reported metric to the actual output (with configurable
-   tolerance per metric) and judges chart similarity using the LLM's vision
-   capability.
-6. **Reports** a verdict — `reproduced` / `partial` / `failed` — with a
-   per-9-step coverage table, exit code, `report.md`, and machine-readable
-   `report.json`.
+A compliant repo declares a `.plutus/manifest.yaml` and emits a strict per-step
+results contract. `plutus check` then builds an isolated container, runs each
+step, compares the produced metrics and artifacts against the values the manifest
+declares, and exits with a verdict — `0` reproduced, `1` partial, `2` failed.
 
-See [`docs/plan/2026-05-15-plutus-verify-design.md`](docs/plan/2026-05-15-plutus-verify-design.md) for the full design.
+The manifest **is** the plan: the verifier runs deterministically with no LLM in
+the loop.
+
+## The two contracts
+
+1. **The manifest** — `.plutus/manifest.yaml`, committed to the repo, declares the
+   runtime env, data sources, steps, and the `expected` metrics/artifacts.
+   Validated against a JSON Schema plus cross-field invariants.
+2. **The results contract** — each step writes `.plutus/run/<step_id>/results.json`
+   with `metrics` (snake_case names, canonical decimal units — `percent` is
+   rejected), `artifacts`, and `metadata`. The verifier reads each metric **by
+   name**; no stdout scraping, no markdown-table parsing.
+
+See [`docs/design/v2-spec-and-execution.md`](docs/design/v2-spec-and-execution.md)
+for the design and [`docs/feature/v2-manifest.md`](docs/feature/v2-manifest.md)
+for the full manifest/results reference.
 
 ## Install
 
 Requires Python ≥ 3.11. From the project root:
 
 ```bash
-python3.13 -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev,llm,runner,charts]"
+pip install -e ".[dev,runner]"     # runner = Docker support, needed for `check`
 ```
 
-External tools you'll need at runtime:
-- `git` (for ingest)
-- `docker` (for the build + execute stages)
-- `jupyter-repo2docker` (installed via `[runner]`)
-- A locally-running Gemma endpoint exposing the OpenAI chat-completions API
-  (vLLM, TGI, sglang, llama.cpp server). Defaults to `http://localhost:8000/v1`.
+Optional extras:
+- `runner` — `docker` + `repo2docker` + `build` (required for `check`)
+- `llm` — `openai` client (for `transfer` and remote `verify`)
+- `charts` — `cairosvg` + `pillow` (rasterizing artifacts for visual comparison)
 
-## CLI
+Runtime tools: `git` and `docker` must be on `PATH`.
+
+## Quick start
 
 ```bash
-plutus-verify <git_url>
-              [--ref <branch|sha>]
-              [--secrets path/to/.env]
-              [--config path/to/plutus-verify.yaml]
-              [--out ./out]
-              [--resume-from extract|build|execute|compare|report]
-              [--prefer-data-path google_drive|db_loader|auto]
-              [--llm-endpoint http://localhost:8000/v1]
-              [--no-charts]                  # bypass vision when Gemma vision is down
-              [--dry-run]                    # ingest + extract + build only
-              [--extract-only]               # ingest + extract; stop after plan.json
-
-plutus-verify ./local/path --skip-clone
-plutus-verify --batch repos.txt --out ./out
+plutus init .                      # scaffold .plutus/manifest.yaml + CI workflow + example script
+# 1. instrument each step's script (see .plutus/example_script.py):
+#      import plutus_verify as pv
+#      with pv.step("in_sample") as r:
+#          r.metric("sharpe_ratio", float(sharpe), unit="ratio")
+#          r.artifact("equity_curve", "out/equity.png", kind="chart")
+# 2. fill in .plutus/manifest.yaml (env, data_sources, steps, expected)
+plutus check . --secrets-from-env  # build, run, compare → exit 0 / 1 / 2
 ```
 
 Exit codes:
-- `0` — every required step reproduced
-- `1` — required steps ran cleanly but ≥1 metric/chart was partial
-- `2` — a required step failed, or the pipeline couldn't start
+- `0` — every required step ran cleanly **and** all metric/artifact comparisons passed
+- `1` — required steps ran, but ≥1 comparison was partial (soft fail)
+- `2` — a required step failed, or the pipeline couldn't start (bad manifest, build error)
 
-## Quick example
+`plutus check` builds an image from `.plutus/Dockerfile.generated` (derived from
+the manifest's `env`), then runs each step in an isolated staging copy of the
+repo filtered by `.dockerignore` (and `step.inputs`, if declared) — the host
+`.env` and stale caches cannot leak into the container at runtime. Outputs land
+in `.plutus/run/<step_id>/`.
 
-```bash
-plutus-verify https://github.com/algotrade-plutus/ProtoMarketMaker \
-              --secrets ./secrets/proto-mm.env \
-              --llm-endpoint http://localhost:8000/v1
-```
+## CLI
 
-Outputs land under `./out/<run_id>/`:
-- `plan.json` — what Gemma extracted (hand-edit + `--resume-from execute` to override)
-- `meta.json` — repo url/sha/branch
-- `report.json` — machine-readable result
-- `report.md` — reviewer-friendly summary
-- `step_<n>.log` — captured stdout/stderr per executed step
+All subcommands are under the `plutus` entrypoint (`plutus -h` for help):
 
-## Configuration
+| Command | What it does |
+|---|---|
+| `plutus init [path]` | Scaffold `.plutus/manifest.yaml`, `.github/workflows/plutus.yml`, and an example instrumented script. |
+| `plutus check [path]` | Build → run each step → compare against `expected`. The reproducibility gate. |
+| `plutus snapshot [path]` | Capture step outputs into `.plutus/expected/` and fill `expected.metrics[].value` in the manifest. |
+| `plutus bootstrap [path]` | Auto-fill a draft manifest from existing `.plutus/run/` results (run after instrumenting + a local run). |
+| `plutus transfer [path]` | Draft a manifest for a README-only repo by extracting its plan with an LLM (+ `instrument_TODO.md`). |
+| `plutus verify <git_url>` | Verify a remote repo: clone a git URL, extract its plan from the README via an LLM, build, run, and compare. |
 
-`plutus-verify.yaml` overrides the defaults (see
-[`docs/plan/2026-05-15-plutus-verify-design.md`](docs/plan/2026-05-15-plutus-verify-design.md#plutus-verifyyaml-sample) for the full surface):
+Useful `check` flags: `--secrets-from-env` (inject env vars as secrets),
+`--data-tier processed|raw|code|auto`, `--visual-check` (enable
+`visual_similarity` comparisons; needs `PLUTUS_VISION_ENDPOINT` +
+`PLUTUS_VISION_MODEL`).
 
-```yaml
-llm:
-  endpoint: http://localhost:8000/v1
-  model: gemma-4-26b-a4b
-  vision_model: gemma-4-26b-a4b
+## The manifest
 
-tolerances:
-  ratio_relative: 0.05
-  percentage_absolute: 1.0
-  overrides:
-    sharpe_ratio: {kind: relative, value: 0.05}
-    max_drawdown: {kind: absolute, value: 0.02}
-
-charts:
-  match_threshold: 0.7
-
-execute:
-  default_network: none
-  data_step_network: bridge
-```
-
-## Architecture
-
-```
-ingest  →  extract  →  build  →  execute  →  compare  →  report
-  git       Gemma     repo2docker  Docker      numeric +    JSON +
-  clone     -> JSON    build       step runs   Gemma chart  Markdown
-                                               judging      + exit code
-```
-
-Every stage's outputs live on disk under `./out/<run_id>/`, so a single stage
-can be re-run with `--resume-from <stage>` (after, e.g., hand-editing
-`plan.json` when the extractor was wrong).
-
-## Testing
-
-```bash
-pytest tests/unit          # fast, no Docker, no LLM endpoint required
-pytest tests/integration   # uses real subprocess, still no Docker/LLM
-```
-
-The end-to-end test against a real Gemma + a real Plutus repo is the
-verifier's "E2E" tier — run it nightly, not as a regression gate.
-
-## Status
-
-| Milestone | Status | Notes |
-|----------:|:------:|-------|
-| M1 — Plan extraction | ✅ done | extractor + retry, plan schema validated |
-| M2 — Build + execute | ✅ scaffolded | Docker + repo2docker wrappers; live runs need Docker installed |
-| M3 — Numeric comparison + report | ✅ done | all three locate kinds + tolerance + exit codes |
-| M4 — Chart visual judgment | ✅ scaffolded | OpenAI-compat vision client wired in |
-| M5 — Batch mode + CI polish | ◐ partial | `--batch` works; GitHub Action wrapper TBD |
-
-## v2 manifest (preview)
-
-Repos that ship a `.plutus/manifest.yaml` skip LLM extraction entirely — the
-manifest IS the plan. See
-[`docs/plan/2026-05-20-plutus-spec-v2-foundation.md`](docs/plan/2026-05-20-plutus-spec-v2-foundation.md)
-for the foundation work.
-
-A minimal manifest looks like:
+A minimal valid manifest (all required top-level keys present):
 
 ```yaml
 schema_version: "2.0"
 repo: {name: Demo, primary_language: python}
 env:
-  base: python
+  base: python                         # python | python-cuda | none
   python_version: "3.11"
-  requirements_file: requirements.txt
-secrets: []
-data_sources: {processed: [], raw: []}
+  requirements_file: requirements.txt  # null if none
+  gpu_required: false
+secrets: []                            # required, may be empty
+data_sources: {processed: [], raw: []} # both arrays required
 steps:
   - id: in_sample
-    nine_step: step_4_in_sample
-    required: true
+    nine_step: step_4_in_sample        # one of the 7 nine-step keys, or null
+    required: true                     # gates the exit code
     command: "python -m demo.backtest"
-    outputs: ["out/metrics.json"]
-expected: []
-nine_step_coverage: {}
+expected:
+  - step_id: in_sample
+    metrics:
+      - name: sharpe_ratio
+        value: 1.42
+        tolerance: {kind: relative, value: 0.05}
 ```
 
-Authoring tools (`plutus init`, `plutus check`, `plutus snapshot`) land in Plan 3.
-Native v2 execution (input/output pre-flight, data-tier resolver, full
-reference-output comparator) lands in Plan 2.
+The nine-step taxonomy keys are `step_1_hypothesis`, `step_2_data_collection`,
+`step_3_data_processing`, `step_4_in_sample`, `step_5_optimization`,
+`step_6_out_of_sample`, `step_7_paper_trading`. Repo-specific steps that don't
+fit a key use `nine_step: null` + a `label`.
 
-## Migrating a legacy repo
+## Scoring & skills
 
-For repos that already exist as v1 (README + LLM extraction), run:
+Two Claude Code skills (under [`skills/`](skills/)) wrap the workflow:
+
+- **`plutus-transform`** — turns a research repo into a verifiable one via a
+  four-phase workflow (Survey → Decide → Instrument → Verify), anchored on
+  `plutus check` exiting 0, then auto-chains into scoring.
+  ([`docs/feature/plutus-transform-skill.md`](docs/feature/plutus-transform-skill.md))
+- **`plutus-scoring`** — scores a compliant repo against the compliance rubric and
+  emits per-bucket scores, ranked improvement paths, and a re-run command.
+  ([`docs/feature/plutus-scoring-skill.md`](docs/feature/plutus-scoring-skill.md))
+
+The rubric has four weighted buckets summing to 100%: **Reproducible (50)** —
+`plutus check` exit 0 within tolerance · **Tidy / well-documented (25)** ·
+**Standardized / template (10)** · **Innovative (15)**. See
+[`skills/plutus-scoring/references/compliance-rubric.md`](skills/plutus-scoring/references/compliance-rubric.md).
+
+## Architecture
+
+```
+manifest ─→ build ──────→ run steps ─────→ compare ────→ report
+.plutus/   Dockerfile     isolated         results.json   exit
+manifest   .generated     staging copies   vs expected    0 / 1 / 2
+```
+
+Design docs live under [`docs/design/`](docs/design/); user-facing feature docs
+under [`docs/feature/`](docs/feature/).
+
+## Testing
 
 ```bash
-plutus transfer /path/to/repo --llm-endpoint http://localhost:11434/v1
+pytest tests/unit          # fast, no Docker, no LLM endpoint required
+pytest tests/integration   # real subprocess, still no Docker/LLM
 ```
 
-This writes `.plutus/manifest.yaml.draft`. Open it, address every
-`# TODO(plutus-transfer):` marker, rename to `manifest.yaml`, and run
-`plutus check` to verify the migration.
+The end-to-end tier (real Docker + a real Plutus repo) is run on demand, not as a
+regression gate.
+
+## Changelog
+
+- **v2 (0.2.x, current):** repos declare a `.plutus/manifest.yaml` and emit a results contract; verification is deterministic with no LLM in the hot path.
+- **v1 (earlier):** plans were extracted from the README by an LLM — still available via `plutus verify <git_url>` for un-instrumented remote repos.
