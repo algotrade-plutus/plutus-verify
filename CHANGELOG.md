@@ -4,6 +4,38 @@ All notable changes to `plutus-verify` are recorded here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 project is pre-1.0 and uses calendar-driven minor bumps.
 
+## [0.3.0] — 2026-06-17
+
+Aligns the manifest/results taxonomy with the 2025 revision of the PLUTUS
+9-step process, and adds an optional way to document the data-preparation
+sub-processes. **Breaking:** manifests using the old step-2/step-3 keys no
+longer validate.
+
+### Changed — v2025 nine-step taxonomy (breaking)
+
+- `step_2_data_collection` → `step_2_data_preparation` (data collection and data
+  processing are now one canonical step).
+- `step_3_data_processing` → `step_3_forming_set_of_rules`.
+- The validator's data-step command rule now keys off the single
+  `data_preparation` step id (was `data_collection`/`data_processing`).
+- Hard cutover: a manifest with the old `nine_step` keys fails to load with
+  `ManifestLoadError` (exit 2). Re-author downstream manifests.
+
+### Changed — legacy LLM-extraction path frozen
+
+- The README/LLM-extraction path is decoupled from the live taxonomy and frozen
+  on `LEGACY_NINE_STEP_KEYS` (the v2023 keys). The `spec.adapter` (v2→legacy)
+  and `scaffold.extract_to_v2` (legacy→v2) bridges translate at the boundary, so
+  `verify` and `transfer` keep working without tracking the new taxonomy.
+
+### Added — `sub_processes` documentation block
+
+- The `data_preparation` step accepts an optional, documentation-only
+  `sub_processes` block with `collection` and `processing` slots (each: required
+  `description`, optional `command`/`inputs`/`outputs`). Never executed; only
+  valid on the data_preparation step; surfaced under "Step 2: Data Preparation"
+  in `plutus check` output.
+
 ## [0.2.10] — 2026-05-29
 
 Closes the runtime-mount verification-correctness gap left open by
