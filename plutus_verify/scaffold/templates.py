@@ -19,7 +19,7 @@ env:
 secrets: []
   # - key: TIINGO_API_KEY
   #   purpose: market data download
-  #   used_by: [data_collection]
+  #   used_by: [data_preparation]
 
 data_sources:
   processed: []
@@ -28,22 +28,23 @@ data_sources:
   #   - kind: google_drive
   #     url: https://drive.google.com/...
   #     expected_layout: ["data/processed/*.parquet"]
-  #     satisfies: [data_collection, data_processing]
+  #     satisfies: [data_preparation]
 
 steps:
-  - id: data_collection
-    nine_step: step_2_data_collection
+  # Step 2 of the Plutus process is Data Preparation — it covers both data
+  # collection and processing. Use one data_preparation step.
+  - id: data_preparation
+    nine_step: step_2_data_preparation
     required: true
     network: bridge          # TODO: 'none' if no network is needed
     timeout_seconds: 1800
-    command: "TODO_python_module_to_collect_data"
-    outputs: ["data/raw/"]   # TODO: list the exact file paths/globs
-  - id: data_processing
-    nine_step: step_3_data_processing
-    required: true
-    command: "TODO_python_module_to_preprocess"
-    inputs: [data/raw]
-    outputs: ["data/processed/"]
+    command: "TODO_python_module_to_prepare_data"
+    outputs: ["data/processed/"]   # TODO: list the exact file paths/globs
+    # Optional: document the collection + processing sub-processes (documentation
+    # only, never executed; only valid on this step). Omit if you just download data.
+    # sub_processes:
+    #   collection: {description: "how raw data is obtained"}
+    #   processing: {description: "how raw data becomes the backtest inputs"}
   - id: in_sample
     nine_step: step_4_in_sample
     required: true
@@ -67,8 +68,8 @@ expected:
 
 nine_step_coverage:
   step_1_hypothesis: {present: true, section: "TODO"}
-  step_2_data_collection: {present: true, section: "TODO"}
-  step_3_data_processing: {present: true, section: "TODO"}
+  step_2_data_preparation: {present: true, section: "TODO"}
+  step_3_forming_set_of_rules: {present: false, section: null}
   step_4_in_sample: {present: true, section: "TODO"}
   step_5_optimization: {present: false, section: null}
   step_6_out_of_sample: {present: false, section: null}

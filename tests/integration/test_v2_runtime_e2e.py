@@ -52,7 +52,7 @@ def test_v2_runtime_end_to_end(tmp_path):
     # data_tier_used is "raw" because the layout already exists (we pre-staged it)
     assert result.data_tier_used == "raw"
     # 3 steps in fixture, all should have an entry in step_results
-    assert set(result.step_results.keys()) == {"data_collection", "data_processing", "in_sample"}
+    assert set(result.step_results.keys()) == {"data_preparation", "forming_rules", "in_sample"}
     # ExpectedMetrics are now compared by reading results.json by metric name.
     hr = result.metric_results["in_sample"]["sharpe_ratio"]
     assert hr.ok is True

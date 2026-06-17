@@ -7,8 +7,8 @@ from plutus_verify.spec.runtime import V2RuntimeResult
 
 _NINE_STEP_TITLES = {
     "step_1_hypothesis": "Step 1: Hypothesis",
-    "step_2_data_collection": "Step 2: Data Collection",
-    "step_3_data_processing": "Step 3: Data Processing",
+    "step_2_data_preparation": "Step 2: Data Preparation",
+    "step_3_forming_set_of_rules": "Step 3: Forming Set of Rules",
     "step_4_in_sample": "Step 4: In-sample Backtesting",
     "step_5_optimization": "Step 5: Optimization",
     "step_6_out_of_sample": "Step 6: Out-of-sample Backtesting",
@@ -85,6 +85,17 @@ def _render_step(step: Step, runtime: V2RuntimeResult) -> list[str]:
     skip = f" (skipped: {sr.skipped_reason})" if sr.skipped_reason else ""
     pf = f" [preflight: {sr.preflight_error}]" if sr.preflight_error else ""
     out.append(f"  {status} {step.id}: exit={sr.exit_code}{skip}{pf}")
+
+    # Documented data_preparation sub-processes (documentation only, not executed).
+    if step.sub_processes is not None:
+        for label, sp in (
+            ("collection", step.sub_processes.collection),
+            ("processing", step.sub_processes.processing),
+        ):
+            if sp is None:
+                continue
+            cmd = f" — {sp.command}" if sp.command else ""
+            out.append(f"    • {label}: {sp.description}{cmd}")
 
     metrics = runtime.metric_results.get(step.id, {})
     for name, hr in metrics.items():

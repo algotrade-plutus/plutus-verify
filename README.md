@@ -111,10 +111,15 @@ expected:
         tolerance: {kind: relative, value: 0.05}
 ```
 
-The nine-step taxonomy keys are `step_1_hypothesis`, `step_2_data_collection`,
-`step_3_data_processing`, `step_4_in_sample`, `step_5_optimization`,
+The nine-step taxonomy keys are `step_1_hypothesis`, `step_2_data_preparation`,
+`step_3_forming_set_of_rules`, `step_4_in_sample`, `step_5_optimization`,
 `step_6_out_of_sample`, `step_7_paper_trading`. Repo-specific steps that don't
 fit a key use `nine_step: null` + a `label`.
+
+The `data_preparation` step takes an optional, documentation-only `sub_processes`
+block (`collection` + `processing`) to record what/how data is prepared when a repo
+does more than download ready-to-use files. It is never executed and is only valid
+on that step — see [docs/feature/v2-manifest.md](docs/feature/v2-manifest.md).
 
 ## Scoring & skills
 

@@ -70,21 +70,21 @@ env:
 secrets:
   - key: TIINGO_API_KEY
     purpose: market data
-    used_by: [data_collection]         # step ids, or "data_sources.*" qualifiers
+    used_by: [data_preparation]         # step ids, or "data_sources.*" qualifiers
 data_sources:
   processed:                           # ready-to-run preprocessed data
     - kind: google_drive
       url: https://drive.google.com/...
       expected_layout: ["data/processed/*.parquet"]
-      satisfies: [data_collection, data_processing]
+      satisfies: [data_preparation]
   raw:                                 # raw inputs that still need processing
     - kind: github_release
       url: https://github.com/x/y/releases/v1/raw.tar.gz
       expected_layout: ["data/raw/*.parquet"]
-      satisfies: [data_collection]
+      satisfies: [data_preparation]
 steps:
-  - id: data_collection
-    nine_step: step_2_data_collection
+  - id: data_preparation
+    nine_step: step_2_data_preparation
     required: true
     network: bridge                    # outbound network for the download
     command: "python -m proto_mm.data.collect"   # data_* steps MUST have a command
@@ -95,7 +95,7 @@ steps:
     command: "python -m proto_mm.backtest"
     inputs: [data/processed]           # see "inputs allowlist" caveat
     outputs: ["out/metrics.json", "out/equity.png"]
-    depends_on: [data_collection]
+    depends_on: [data_preparation]
   - id: train_model
     nine_step: null                    # free-form / custom (e.g. ML) step
     label: "Custom: train classifier"
@@ -122,7 +122,7 @@ nine_step_coverage:
 A step's `nine_step` is one of seven keys (or `null` for a free-form step).
 Despite the name, the canonical set has **7** entries:
 
-`step_1_hypothesis`, `step_2_data_collection`, `step_3_data_processing`,
+`step_1_hypothesis`, `step_2_data_preparation`, `step_3_forming_set_of_rules`,
 `step_4_in_sample`, `step_5_optimization`, `step_6_out_of_sample`,
 `step_7_paper_trading`.
 
@@ -133,13 +133,40 @@ Despite the name, the canonical set has **7** entries:
 | `id` | — | unique, non-empty |
 | `nine_step` | — | one of the 7 keys, or `null` (free-form) |
 | `required` | — | only required steps gate the exit code |
-| `command` | `null` | the shell command; required for `data_collection`/`data_processing` |
+| `command` | `null` | the shell command; required for the `data_preparation` step |
 | `network` | `none` | `none` / `bridge` / `host` |
 | `timeout_seconds` | `1800` | per-step timeout |
 | `inputs` | `[]` | positive allowlist of paths staged into the container (see caveat) |
 | `outputs` | `[]` | declared output paths copied back out of the container |
 | `depends_on` | `[]` | step ids; topo-sort edges |
 | `verification_mode` | `execute` | `execute` runs the step; `artifact_check` only checks output files exist |
+| `sub_processes` | — | optional doc-only breakdown of `data_preparation` (see below) |
+
+### Documenting data preparation (`sub_processes`)
+
+The `data_preparation` step (step 2) covers two sub-activities — *data collection*
+and *data processing*. An optional `sub_processes` block documents them for
+completeness. It is **documentation only**: the verifier never runs it (the step's
+own `command` or a satisfying `data_source` is what executes), and it is **only
+valid on the data_preparation step**. Omit it entirely on the happy path where a
+repo just downloads ready-to-use files.
+
+```yaml
+- id: data_preparation
+  nine_step: step_2_data_preparation
+  required: true
+  command: "python data_loader.py"
+  sub_processes:                 # optional; both slots individually optional
+    collection:
+      description: "query the DB for raw VN30F ticks"   # required when the slot is present
+      command: "python data_loader.py --collect"        # optional
+      outputs: ["data/raw/*.parquet"]                    # optional (also: inputs)
+    processing:
+      description: "clean + resample raw ticks to the backtest inputs"
+```
+
+When present, the collection/processing descriptions are surfaced under the
+**Step 2: Data Preparation** section of `plutus check` output.
 
 ### Data tiers
 

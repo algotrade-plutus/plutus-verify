@@ -25,6 +25,8 @@ from plutus_verify.spec.manifest import (
     Repo,
     Secret,
     Step,
+    SubProcess,
+    SubProcesses,
     Tolerance,
 )
 from plutus_verify.spec.schema import MANIFEST_SCHEMA
@@ -133,6 +135,25 @@ def _build_step(d: dict[str, Any]) -> Step:
         outputs=tuple(d.get("outputs", ())),
         depends_on=tuple(d.get("depends_on", ())),
         verification_mode=d.get("verification_mode", "execute"),
+        sub_processes=(
+            _build_sub_processes(d["sub_processes"]) if "sub_processes" in d else None
+        ),
+    )
+
+
+def _build_sub_process(d: dict[str, Any]) -> SubProcess:
+    return SubProcess(
+        description=d["description"],
+        command=d.get("command"),
+        inputs=tuple(d.get("inputs", ())),
+        outputs=tuple(d.get("outputs", ())),
+    )
+
+
+def _build_sub_processes(d: dict[str, Any]) -> SubProcesses:
+    return SubProcesses(
+        collection=_build_sub_process(d["collection"]) if "collection" in d else None,
+        processing=_build_sub_process(d["processing"]) if "processing" in d else None,
     )
 
 

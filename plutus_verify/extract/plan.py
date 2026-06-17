@@ -11,7 +11,10 @@ from typing import Any, Literal, Optional
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError
 
-from plutus_verify.constants import NINE_STEP_KEYS
+# The LLM-extraction path is frozen on the v2023 taxonomy. It binds the legacy
+# keys under the local name NINE_STEP_KEYS (re-exported to decompose.py/stitch.py),
+# decoupling it from the live v2025 constants.NINE_STEP_KEYS used by the manifest.
+from plutus_verify.constants import LEGACY_NINE_STEP_KEYS as NINE_STEP_KEYS
 
 
 class PlanValidationError(ValueError):

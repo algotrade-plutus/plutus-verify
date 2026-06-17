@@ -86,27 +86,27 @@ env:
 secrets:
   - key: TIINGO_API_KEY
     purpose: market data
-    used_by: [data_collection]
+    used_by: [data_preparation]
 data_sources:
   processed:
     - kind: google_drive
       url: https://drive.google.com/x
       expected_layout: ["data/processed/*.parquet"]
-      satisfies: [data_collection, data_processing]
+      satisfies: [data_preparation, forming_rules]
   raw:
     - kind: github_release
       url: https://github.com/x/y/releases/v1/raw.tar.gz
       expected_layout: ["data/raw/*.parquet"]
-      satisfies: [data_collection]
+      satisfies: [data_preparation]
 steps:
-  - id: data_collection
-    nine_step: step_2_data_collection
+  - id: data_preparation
+    nine_step: step_2_data_preparation
     required: true
     network: bridge
     command: "python -m proto_mm.data.collect"
     outputs: ["data/raw/*.parquet"]
-  - id: data_processing
-    nine_step: step_3_data_processing
+  - id: forming_rules
+    nine_step: step_3_forming_set_of_rules
     required: true
     command: "python -m proto_mm.data.preprocess"
     inputs: [data/raw]
@@ -138,14 +138,14 @@ expected:
         threshold: 0.7
 nine_step_coverage:
   step_1_hypothesis: {present: true, section: "1. Hypothesis"}
-  step_2_data_collection: {present: true, section: "2. Data"}
+  step_2_data_preparation: {present: true, section: "2. Data"}
 """
     m = load_manifest_from_yaml_text(yaml_text)
     assert len(m.steps) == 4
     assert m.steps[3].nine_step is None
     assert m.steps[3].label == "Custom: train classifier"
     assert len(m.data_sources.processed) == 1
-    assert m.data_sources.processed[0].satisfies == ("data_collection", "data_processing")
+    assert m.data_sources.processed[0].satisfies == ("data_preparation", "forming_rules")
     assert m.expected[0].metrics[0].value == 0.85
     assert m.expected[0].metrics[0].display_name == "Sharpe Ratio"
     assert m.expected[0].artifacts[1].threshold == 0.7

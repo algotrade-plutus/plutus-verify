@@ -16,13 +16,13 @@
 #   <PYTHON_VERSION>      e.g. '3.13'
 #
 # Notes:
-#   - `data_sources.raw[]` declares the source. If `expected_layout` matches `data_collection.outputs`
+#   - `data_sources.raw[]` declares the source. If `expected_layout` matches `data_preparation.outputs`
 #     and the download succeeds, the verifier skips the step.
-#   - Keep `data_collection` in steps with a fallback `command:` so the manifest is also usable
+#   - Keep `data_preparation` in steps with a fallback `command:` so the manifest is also usable
 #     when the Drive source is unreachable.
 #   - `kind: google_drive` is the canonical Drive value; `http`, `s3`, `github_release` also supported.
 #   - For authenticated sources, add `secrets_required: [TOKEN_KEY]` to the data_sources entry
-#     and route that secret to `data_collection` in `secrets[].used_by`.
+#     and route that secret to `data_preparation` in `secrets[].used_by`.
 
 schema_version: '2.0'
 repo:
@@ -46,11 +46,11 @@ data_sources:
         # <DATA_LAYOUT_PATHS>
         - data/is/<file>.csv
         - data/os/<file>.csv
-      satisfies: [data_collection]
+      satisfies: [data_preparation]
 
 steps:
-  - id: data_collection
-    nine_step: step_2_data_collection
+  - id: data_preparation
+    nine_step: step_2_data_preparation
     required: true
     network: bridge
     timeout_seconds: 1800
@@ -59,6 +59,15 @@ steps:
     outputs:
       - data/is/<file>.csv
       - data/os/<file>.csv
+    # Optional documentation of the data-preparation sub-processes (collection +
+    # processing). Documentation only — never executed. Usually omitted on the
+    # Drive happy path (the source ships ready-to-use files). Only valid here, on
+    # the data_preparation step.
+    # sub_processes:
+    #   collection:
+    #     description: "download raw files from the Drive folder"
+    #   processing:
+    #     description: "no processing needed — files ship ready to use"
 
   - id: optimization
     nine_step: step_5_optimization
@@ -70,7 +79,7 @@ steps:
       - parameter/optimization_parameter.json
     outputs:
       - parameter/optimized_parameter.json
-    depends_on: [data_collection]
+    depends_on: [data_preparation]
 
   - id: in_sample_backtest
     nine_step: step_4_in_sample
@@ -84,7 +93,7 @@ steps:
     outputs:
       - result/backtest/hpr.svg
       - result/backtest/drawdown.svg
-    depends_on: [data_collection]
+    depends_on: [data_preparation]
 
   - id: out_of_sample_backtest
     nine_step: step_6_out_of_sample
@@ -126,8 +135,8 @@ expected:
 
 nine_step_coverage:
   step_1_hypothesis: {present: true, section: "Hypothesis"}
-  step_2_data_collection: {present: true, section: "Data"}
-  step_3_data_processing: {present: false, section: null}
+  step_2_data_preparation: {present: true, section: "Data"}
+  step_3_forming_set_of_rules: {present: false, section: null}
   step_4_in_sample: {present: true, section: "In-sample Backtesting"}
   step_5_optimization: {present: true, section: "Optimization"}
   step_6_out_of_sample: {present: true, section: "Out-of-sample Backtesting"}

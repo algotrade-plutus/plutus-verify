@@ -9,12 +9,33 @@ import re
 from io import StringIO
 from typing import TextIO
 
+from plutus_verify.constants import NINE_STEP_KEYS
 from plutus_verify.extract.plan import ExtractedPlan, Step, StepAlternative
 
 
 _TODO_TAG = "# TODO(plutus-transfer):"
 
 _NON_WORD = re.compile(r"[^\w]+")
+
+# The input plan speaks the frozen v2023 taxonomy; the draft manifest must speak
+# v2025. step 2 (Data Preparation) absorbs both old data steps, so collection and
+# processing both map onto step_2_data_preparation (a 2->1 merge). v1 repos have
+# no "forming set of rules" step, so step_3_forming_set_of_rules has no source.
+_LEGACY_TO_V2_NINE_STEP = {
+    "step_1_hypothesis": "step_1_hypothesis",
+    "step_2_data_collection": "step_2_data_preparation",
+    "step_3_data_processing": "step_2_data_preparation",
+    "step_4_in_sample": "step_4_in_sample",
+    "step_5_optimization": "step_5_optimization",
+    "step_6_out_of_sample": "step_6_out_of_sample",
+    "step_7_paper_trading": "step_7_paper_trading",
+}
+
+
+def _v2_nine_step(legacy_key: str | None) -> str:
+    if legacy_key is None:
+        return "null"
+    return _LEGACY_TO_V2_NINE_STEP.get(legacy_key, legacy_key)
 
 
 def _canonical_name(name: str) -> str:
@@ -126,9 +147,14 @@ def _write_data_sources(buf: TextIO, plan: ExtractedPlan) -> None:
 
 def _write_steps(buf: TextIO, plan: ExtractedPlan) -> None:
     buf.write("steps:\n")
+    buf.write(
+        f"  {_TODO_TAG} v2025 step 2 (Data Preparation) merges the old data_collection\n"
+        f"  {_TODO_TAG} and data_processing. If both appear below, consider merging them\n"
+        f"  {_TODO_TAG} into a single data_preparation step (id + nine_step).\n"
+    )
     for s in plan.steps:
         buf.write(f"  - id: {s.id}\n")
-        buf.write(f"    nine_step: {s.nine_step}\n")
+        buf.write(f"    nine_step: {_v2_nine_step(s.nine_step)}\n")
         buf.write(f"    required: {str(s.required).lower()}\n")
         if s.network != "none":
             buf.write(f"    network: {s.network}\n")
@@ -187,11 +213,27 @@ def _write_expected(buf: TextIO, plan: ExtractedPlan) -> None:
 
 def _write_nine_step_coverage(buf: TextIO, plan: ExtractedPlan) -> None:
     buf.write("nine_step_coverage:\n")
+    # Translate the frozen v1 mapping into the v2025 taxonomy, merging the old
+    # data_collection + data_processing coverage into step_2_data_preparation.
+    merged: dict[str, tuple[bool, str | None, float]] = {}
     for k, entry in plan.nine_step_mapping.items():
-        section = f'"{entry.section_heading}"' if entry.section_heading else "null"
-        line = f"  {k}: {{present: {str(entry.present).lower()}, section: {section}}}"
-        if entry.confidence < 0.6:
-            line += f"  {_TODO_TAG} LLM uncertain (confidence={entry.confidence:.2f}); review"
+        v2_key = _LEGACY_TO_V2_NINE_STEP.get(k, k)
+        present, section, conf = entry.present, entry.section_heading, entry.confidence
+        if v2_key in merged:
+            prev_present, prev_section, prev_conf = merged[v2_key]
+            present = prev_present or present
+            section = prev_section or section
+            conf = min(prev_conf, conf)
+        merged[v2_key] = (present, section, conf)
+
+    for key in NINE_STEP_KEYS:
+        present, section, conf = merged.get(key, (False, None, 1.0))
+        section_str = f'"{section}"' if section else "null"
+        line = f"  {key}: {{present: {str(present).lower()}, section: {section_str}}}"
+        if key == "step_3_forming_set_of_rules":
+            line += f"  {_TODO_TAG} no v1 equivalent; set present:true if the README forms rules"
+        elif conf < 0.6:
+            line += f"  {_TODO_TAG} LLM uncertain (confidence={conf:.2f}); review"
         buf.write(line + "\n")
 
 

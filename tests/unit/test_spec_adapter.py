@@ -112,25 +112,20 @@ data_sources:
     - kind: github_release
       url: https://github.com/x/y/raw.tar.gz
       expected_layout: ["data/raw/*.parquet"]
-      satisfies: [data_collection]
+      satisfies: [data_preparation]
 steps:
-  - id: data_collection
-    nine_step: step_2_data_collection
+  - id: data_preparation
+    nine_step: step_2_data_preparation
     required: true
     network: bridge
     command: "python collect.py"
     outputs: ["data/raw/x.parquet"]
-  - id: data_processing
-    nine_step: step_3_data_processing
-    required: true
-    command: "python preprocess.py"
-    outputs: ["data/processed/x.parquet"]
 expected: []
 nine_step_coverage: {}
 """
     m = load_manifest_from_yaml_text(yaml_text)
     p = to_extracted_plan(m)
-    dc = next(s for s in p.steps if s.id == "data_collection")
+    dc = next(s for s in p.steps if s.id == "data_preparation")
     assert dc.alternatives is not None
     assert len(dc.alternatives) == 1
     alt = dc.alternatives[0]
@@ -174,19 +169,19 @@ data_sources:
     - kind: s3
       url: s3://x
       expected_layout: ["data/processed/*.parquet"]
-      satisfies: [data_collection, data_processing]
+      satisfies: [data_preparation, in_sample]
   raw: []
 steps:
-  - id: data_collection
-    nine_step: step_2_data_collection
+  - id: data_preparation
+    nine_step: step_2_data_preparation
     required: true
     command: "python a.py"
-    outputs: ["data/raw/x"]
-  - id: data_processing
-    nine_step: step_3_data_processing
+    outputs: ["data/processed/x"]
+  - id: in_sample
+    nine_step: step_4_in_sample
     required: true
     command: "python b.py"
-    outputs: ["data/processed/x"]
+    outputs: ["out/m.json"]
 expected: []
 nine_step_coverage: {}
 """
@@ -195,3 +190,52 @@ nine_step_coverage: {}
     notes_blob = " ".join(p.extraction_notes)
     assert "data_sources.processed" in notes_blob
     assert "Plan 2" in notes_blob
+
+
+def test_adapter_translates_v2_keys_to_legacy_taxonomy():
+    """The v1 ExtractedPlan speaks the frozen v2023 taxonomy; data_preparation
+    maps onto the legacy data step, and coverage is translated likewise."""
+    yaml_text = """\
+schema_version: "2.0"
+repo: {name: Demo, primary_language: python}
+env: {base: python, python_version: "3.11", requirements_file: r.txt}
+secrets: []
+data_sources: {processed: [], raw: []}
+steps:
+  - id: data_preparation
+    nine_step: step_2_data_preparation
+    required: true
+    command: "python a.py"
+    outputs: ["data/processed/x"]
+expected: []
+nine_step_coverage:
+  step_2_data_preparation: {present: true, section: "Data"}
+"""
+    m = load_manifest_from_yaml_text(yaml_text)
+    p = to_extracted_plan(m)
+    assert p.steps[0].nine_step == "step_2_data_collection"  # translated to legacy
+    assert p.nine_step_mapping["step_2_data_collection"].present is True
+
+
+def test_adapter_forming_rules_has_no_v1_equivalent():
+    """step_3_forming_set_of_rules has no v2023 equivalent → placeholder + note."""
+    yaml_text = """\
+schema_version: "2.0"
+repo: {name: Demo, primary_language: python}
+env: {base: python, python_version: "3.11", requirements_file: r.txt}
+secrets: []
+data_sources: {processed: [], raw: []}
+steps:
+  - id: rules
+    nine_step: step_3_forming_set_of_rules
+    required: true
+    command: "python rules.py"
+    outputs: ["out/rules.json"]
+expected: []
+nine_step_coverage:
+  step_3_forming_set_of_rules: {present: true, section: "Rules"}
+"""
+    m = load_manifest_from_yaml_text(yaml_text)
+    p = to_extracted_plan(m)
+    assert p.steps[0].nine_step == "step_4_in_sample"  # placeholder
+    assert any("no v1" in note for note in p.extraction_notes)

@@ -58,7 +58,7 @@ def test_spec_e2e_extract_only(tmp_path: Path, monkeypatch):
     assert plan.repo.name == "SpecV2Minimal"
     assert len(plan.steps) == 3
     step_ids = [s.id for s in plan.steps]
-    assert step_ids == ["data_collection", "data_processing", "in_sample"]
+    assert step_ids == ["data_preparation", "forming_rules", "in_sample"]
 
     dc = plan.steps[0]
     assert dc.alternatives is not None and len(dc.alternatives) == 1

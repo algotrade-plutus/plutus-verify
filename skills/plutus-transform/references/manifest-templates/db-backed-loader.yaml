@@ -3,7 +3,7 @@
 # Use when:
 #   - A working `data_loader.py` (or equivalent) pulls data from a database
 #   - No Drive/HTTP source ships all required files
-#   - The maintainer is OK with the data_collection step running in-container
+#   - The maintainer is OK with the data_preparation step running in-container
 #
 # Modeled after Z-Bounce. See docs/others/zbounce-v1-to-v2-upgrade.md Appendix A.
 #
@@ -36,27 +36,27 @@ env:
 secrets:
   - key: HOST
     purpose: Database host
-    used_by: [data_collection, in_sample_backtest, out_of_sample_backtest]
+    used_by: [data_preparation, in_sample_backtest, out_of_sample_backtest]
   - key: PORT
     purpose: Database port
-    used_by: [data_collection, in_sample_backtest, out_of_sample_backtest]
+    used_by: [data_preparation, in_sample_backtest, out_of_sample_backtest]
   - key: DATABASE
     purpose: Database name
-    used_by: [data_collection, in_sample_backtest, out_of_sample_backtest]
+    used_by: [data_preparation, in_sample_backtest, out_of_sample_backtest]
   - key: USER_DB
     purpose: Database user
-    used_by: [data_collection, in_sample_backtest, out_of_sample_backtest]
+    used_by: [data_preparation, in_sample_backtest, out_of_sample_backtest]
   - key: PASSWORD
     purpose: Database password
-    used_by: [data_collection, in_sample_backtest, out_of_sample_backtest]
+    used_by: [data_preparation, in_sample_backtest, out_of_sample_backtest]
 
 data_sources:
   processed: []
   raw: []
 
 steps:
-  - id: data_collection
-    nine_step: step_2_data_collection
+  - id: data_preparation
+    nine_step: step_2_data_preparation
     required: true
     network: bridge
     timeout_seconds: 1800
@@ -66,6 +66,18 @@ steps:
       # <DATA_INPUT_PATHS>
       - data/is/<file>.csv
       - data/os/<file>.csv
+    # Optional: document the two sub-processes of data preparation (collection +
+    # processing). Documentation only — never executed. Omit entirely if the
+    # happy path just downloads files. Only valid on the data_preparation step.
+    # sub_processes:
+    #   collection:
+    #     description: "query the DB for raw VN30F ticks"
+    #     command: "python data_loader.py --collect"
+    #     outputs: [data/raw/<file>.csv]
+    #   processing:
+    #     description: "clean + resample raw ticks into the backtest inputs"
+    #     command: "python data_loader.py --process"
+    #     outputs: [data/is/<file>.csv, data/os/<file>.csv]
 
   - id: optimization
     nine_step: step_5_optimization
@@ -77,7 +89,7 @@ steps:
       - parameter/optimization_parameter.json
     outputs:
       - parameter/optimized_parameter.json
-    depends_on: [data_collection]
+    depends_on: [data_preparation]
 
   - id: in_sample_backtest
     nine_step: step_4_in_sample
@@ -92,7 +104,7 @@ steps:
       # <CHART_OUTPUT_PATHS>
       - result/backtest/hpr.svg
       - result/backtest/drawdown.svg
-    depends_on: [data_collection]
+    depends_on: [data_preparation]
 
   - id: out_of_sample_backtest
     nine_step: step_6_out_of_sample
@@ -141,8 +153,8 @@ expected:
 
 nine_step_coverage:
   step_1_hypothesis: {present: true, section: "Hypothesis"}
-  step_2_data_collection: {present: true, section: "Data"}
-  step_3_data_processing: {present: false, section: null}
+  step_2_data_preparation: {present: true, section: "Data"}
+  step_3_forming_set_of_rules: {present: false, section: null}
   step_4_in_sample: {present: true, section: "In-sample Backtesting"}
   step_5_optimization: {present: true, section: "Optimization"}
   step_6_out_of_sample: {present: true, section: "Out-of-sample Backtesting"}

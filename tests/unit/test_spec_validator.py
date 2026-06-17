@@ -20,31 +20,31 @@ def _yaml(steps: str) -> str:
     return _BASE % steps
 
 
-def test_data_collection_without_command_rejected():
+def test_data_preparation_without_command_rejected():
     steps = """
-  - id: data_collection
-    nine_step: step_2_data_collection
-    required: true
-    outputs: ["data/raw/x.parquet"]
-"""
-    with pytest.raises(ManifestLoadError, match="data_collection.*command"):
-        load_manifest_from_yaml_text(_yaml(steps))
-
-
-def test_data_processing_without_command_rejected():
-    steps = """
-  - id: data_processing
-    nine_step: step_3_data_processing
+  - id: data_preparation
+    nine_step: step_2_data_preparation
     required: true
     outputs: ["data/processed/x.parquet"]
+"""
+    with pytest.raises(ManifestLoadError, match="data_preparation.*command"):
+        load_manifest_from_yaml_text(_yaml(steps))
+
+
+def test_legacy_data_ids_no_longer_require_command():
+    # After the v2025 rename only `data_preparation` is special-cased. The old
+    # `data_collection`/`data_processing` ids are ordinary steps now and may omit
+    # a command (a free-form step with nine_step: null).
+    steps = """
   - id: data_collection
-    nine_step: step_2_data_collection
+    nine_step: null
+    label: "legacy id, no longer a data step"
     required: true
-    command: "python collect.py"
     outputs: ["data/raw/x.parquet"]
 """
-    with pytest.raises(ManifestLoadError, match="data_processing.*command"):
-        load_manifest_from_yaml_text(_yaml(steps))
+    m = load_manifest_from_yaml_text(_yaml(steps))
+    assert m.steps[0].id == "data_collection"
+    assert m.steps[0].command is None
 
 
 def test_duplicate_step_ids_rejected():
@@ -107,15 +107,15 @@ data_sources:
     - kind: s3
       url: s3://x
       expected_layout: ["data/processed/*.parquet"]
-      satisfies: ["data_collection", "ghost"]
+      satisfies: ["data_preparation", "ghost"]
   raw: []
 steps:
-  - id: data_collection
-    nine_step: step_2_data_collection
+  - id: data_preparation
+    nine_step: step_2_data_preparation
     required: true
     command: "echo a"
-  - id: data_processing
-    nine_step: step_3_data_processing
+  - id: in_sample
+    nine_step: step_4_in_sample
     required: true
     command: "echo b"
 expected: []

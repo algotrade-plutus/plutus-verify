@@ -45,6 +45,30 @@ _ARTIFACT = {
     "additionalProperties": False,
 }
 
+_SUB_PROCESS = {
+    "type": "object",
+    "required": ["description"],
+    "properties": {
+        "description": {"type": "string", "minLength": 1},
+        "command": {"type": ["string", "null"]},
+        "inputs": {"type": "array", "items": {"type": "string"}},
+        "outputs": {"type": "array", "items": {"type": "string"}},
+    },
+    "additionalProperties": False,
+}
+
+# Optional, documentation-only breakdown of the data_preparation step into its two
+# v2025 sub-processes. Never executed by the verifier. A validator invariant
+# restricts this block to the step whose nine_step is step_2_data_preparation.
+_SUB_PROCESSES = {
+    "type": "object",
+    "properties": {
+        "collection": _SUB_PROCESS,
+        "processing": _SUB_PROCESS,
+    },
+    "additionalProperties": False,
+}
+
 _DATA_SOURCE = {
     "type": "object",
     "required": ["kind", "url", "expected_layout", "satisfies"],
@@ -82,6 +106,7 @@ _STEP = {
             "type": "string",
             "enum": ["execute", "artifact_check"],
         },
+        "sub_processes": _SUB_PROCESSES,
     },
     "additionalProperties": False,
 }

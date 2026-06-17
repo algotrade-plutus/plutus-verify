@@ -65,7 +65,7 @@ def _ok_sr(step_id: str, *, skipped_reason: str | None = None) -> StepRuntimeRes
 
 def test_render_groups_by_nine_step():
     steps = (
-        Step(id="data_collection", nine_step="step_2_data_collection", required=True, command="x"),
+        Step(id="data_preparation", nine_step="step_2_data_preparation", required=True, command="x"),
         Step(id="in_sample", nine_step="step_4_in_sample", required=True, command="x"),
         Step(id="opt", nine_step="step_5_optimization", required=True, command="x"),
         Step(id="oos", nine_step="step_6_out_of_sample", required=True, command="x"),
@@ -73,7 +73,7 @@ def test_render_groups_by_nine_step():
     manifest = _make_manifest(steps=steps)
     runtime = _make_runtime(
         step_results={
-            "data_collection": _ok_sr("data_collection"),
+            "data_preparation": _ok_sr("data_preparation"),
             "in_sample": _ok_sr("in_sample"),
             "opt": _ok_sr("opt"),
             "oos": _ok_sr("oos"),
@@ -84,8 +84,8 @@ def test_render_groups_by_nine_step():
     out = "\n".join(lines)
 
     assert "Step 1: Hypothesis" in out
-    assert "Step 2: Data Collection" in out
-    assert "Step 3: Data Processing" in out
+    assert "Step 2: Data Preparation" in out
+    assert "Step 3: Forming Set of Rules" in out
     assert "Step 4: In-sample Backtesting" in out
     assert "Step 5: Optimization" in out
     assert "Step 6: Out-of-sample Backtesting" in out
@@ -307,20 +307,20 @@ def test_render_step_order_matches_framework_order():
     # Manifest declares step_5 BEFORE step_2 deliberately.
     steps = (
         Step(id="opt", nine_step="step_5_optimization", required=True, command="x"),
-        Step(id="data_collection", nine_step="step_2_data_collection", required=True, command="x"),
+        Step(id="data_preparation", nine_step="step_2_data_preparation", required=True, command="x"),
     )
     manifest = _make_manifest(steps=steps)
     runtime = _make_runtime(
         step_results={
             "opt": _ok_sr("opt"),
-            "data_collection": _ok_sr("data_collection"),
+            "data_preparation": _ok_sr("data_preparation"),
         }
     )
 
     lines = render_check_report(manifest, runtime)
     out = "\n".join(lines)
 
-    step2_pos = out.index("Step 2: Data Collection")
+    step2_pos = out.index("Step 2: Data Preparation")
     step5_pos = out.index("Step 5: Optimization")
     assert step2_pos < step5_pos, "Step 2 should appear before Step 5 regardless of manifest order"
 

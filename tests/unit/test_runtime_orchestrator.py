@@ -38,8 +38,8 @@ env: {base: python, python_version: "3.11", requirements_file: requirements.txt}
 secrets: []
 data_sources: {processed: [], raw: []}
 steps:
-  - id: data_collection
-    nine_step: step_2_data_collection
+  - id: data_preparation
+    nine_step: step_2_data_preparation
     required: true
     command: "echo data"
     outputs: ["data/raw/x"]
@@ -93,7 +93,7 @@ def test_runtime_runs_all_steps_and_compares_metrics(tmp_path):
     assert isinstance(result, V2RuntimeResult)
     assert result.image == "built-image-tag"
     image_builder.assert_called_once()
-    assert runner.run.call_count == 2  # data_collection + in_sample
+    assert runner.run.call_count == 2  # data_preparation + in_sample
     hr = result.metric_results["in_sample"]["sharpe"]
     assert hr.ok is True
     assert hr.actual == 0.86
@@ -110,7 +110,7 @@ def test_runtime_skips_steps_satisfied_by_data_source(tmp_path):
     - kind: github_release
       url: https://example.com/raw.tar.gz
       expected_layout: ["data/raw/x"]
-      satisfies: [data_collection]""",
+      satisfies: [data_preparation]""",
     )
     manifest = load_manifest_from_yaml_text(yaml)
     image_builder = MagicMock(return_value="img")
@@ -127,7 +127,7 @@ def test_runtime_skips_steps_satisfied_by_data_source(tmp_path):
         downloader=lambda *a, **kw: True,  # pretend download succeeds
     )
 
-    # data_collection skipped → only in_sample ran
+    # data_preparation skipped → only in_sample ran
     assert runner.run.call_count == 1
     assert result.data_tier_used == "raw"
 
@@ -136,7 +136,7 @@ def test_runtime_propagates_step_failure(tmp_path):
     _stage_repo(tmp_path)
     manifest = load_manifest_from_yaml_text(_YAML)
     runner = MagicMock()
-    # data_collection fails — in_sample should still be attempted? Per design,
+    # data_preparation fails — in_sample should still be attempted? Per design,
     # downstream steps that declare it as depends_on skip. With no depends_on,
     # in_sample runs anyway. The orchestrator records the failure but does not
     # raise — it surfaces in `result.step_results`.
@@ -154,7 +154,7 @@ def test_runtime_propagates_step_failure(tmp_path):
         secrets={},
     )
 
-    assert result.step_results["data_collection"].exit_code == 1
+    assert result.step_results["data_preparation"].exit_code == 1
     assert result.step_results["in_sample"].exit_code == 0
 
 
@@ -175,8 +175,8 @@ def test_runtime_preflight_failure_marks_step_skipped(tmp_path):
         secrets={},
     )
 
-    # data_collection has no inputs, runs OK; outputs missing → preflight failure post-run
-    dc = result.step_results["data_collection"]
+    # data_preparation has no inputs, runs OK; outputs missing → preflight failure post-run
+    dc = result.step_results["data_preparation"]
     assert dc.preflight_error is not None
     assert "missing output" in dc.preflight_error
 
@@ -193,8 +193,8 @@ env: {{base: python, python_version: "3.11", requirements_file: requirements.txt
 secrets: []
 data_sources: {{processed: [], raw: []}}
 steps:
-  - id: data_collection
-    nine_step: step_2_data_collection
+  - id: data_preparation
+    nine_step: step_2_data_preparation
     required: true
     command: "echo data"
     outputs: ["data/raw/x"]

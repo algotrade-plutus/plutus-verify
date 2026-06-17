@@ -68,10 +68,10 @@ against accidentally leaking unrelated host secrets.
 secrets:
   - key: DB_NAME
     purpose: Algotrade database name
-    used_by: [data_collection]
+    used_by: [data_preparation]
   - key: DB_PASSWORD
     purpose: Algotrade database password
-    used_by: [data_collection]
+    used_by: [data_preparation]
 ```
 
 **Common pitfall:** Forgetting `used_by`. A secret with no `used_by` is
@@ -83,19 +83,18 @@ the step IDs that actually need the secret.
 ## 3. `data_sources[]` — pre-built data downloads (optional)
 
 **What it is:** Tiered data-source declaration. If declared, the verifier
-downloads pre-built data instead of re-running your `data_collection`
+downloads pre-built data instead of re-running your `data_preparation`
 script.
 
-**Why the verifier needs it:** Re-running data collection from primary
+**Why the verifier needs it:** Re-running data preparation from primary
 sources (e.g., the database) is slow and often requires credentials. A
-declared `data_source` lets the verifier skip data_collection entirely
+declared `data_source` lets the verifier skip data_preparation entirely
 if the download succeeds.
 
 **Tiered model:**
 
-- `processed:` — fully-processed data; skip both `data_collection` AND
-  `data_processing` (if you have one)
-- `raw:` — raw data; skip `data_collection` only
+- `processed:` — fully-processed data; skip the `data_preparation` step
+- `raw:` — raw data still needing processing inside `data_preparation`
 
 **Example:**
 
@@ -110,7 +109,7 @@ data_sources:
         - data/is/VN30F2M_data.csv
         - data/os/VN30F1M_data.csv
         - data/os/VN30F2M_data.csv
-      satisfies: [data_collection]
+      satisfies: [data_preparation]
 ```
 
 **Supported `kind` values:** `google_drive`, `github_release`, `http`.
@@ -127,11 +126,10 @@ will just run each step's command (Tier 3 fallback).
 
 ## 4. `steps[]` free-form additions — steps not covered by `pv.step`
 
-**What it is:** Some steps don't emit metrics — `data_collection`,
-`data_processing`, `optimization` (when shipped as a pre-computed
-artifact), etc. These don't call `pv.step(...)` and therefore leave no
-results.json. Bootstrap can't auto-detect them. You must add them to
-`steps[]` by hand.
+**What it is:** Some steps don't emit metrics — `data_preparation`,
+`optimization` (when shipped as a pre-computed artifact), etc. These
+don't call `pv.step(...)` and therefore leave no results.json. Bootstrap
+can't auto-detect them. You must add them to `steps[]` by hand.
 
 **Why the verifier needs it:** Without these declarations, the verifier
 doesn't know how to download data or run setup steps; backtests fail
@@ -140,7 +138,7 @@ because their input files are missing.
 The bootstrap draft includes a `TODO_steps` comment marker in the
 `steps:` block where you should add these entries.
 
-**Example (adding `data_collection` and `optimization` to a freshly-
+**Example (adding `data_preparation` and `optimization` to a freshly-
 bootstrapped manifest that only auto-detected the two backtest steps):**
 
 ```yaml
@@ -151,10 +149,10 @@ steps:
     ...
 
   # add by hand:
-  - id: data_collection
-    nine_step: step_2_data_collection
+  - id: data_preparation
+    nine_step: step_2_data_preparation
     required: true
-    network: bridge          # data_collection talks to DB/internet
+    network: bridge          # data_preparation talks to DB/internet
     command: "python data_loader.py"
     inputs: []
     outputs:
@@ -170,7 +168,7 @@ steps:
       - parameter/optimization_parameter.json
     outputs:
       - parameter/optimized_parameter.json
-    depends_on: [data_collection]
+    depends_on: [data_preparation]
 ```
 
 ---
@@ -198,8 +196,8 @@ WORKDIR, which mirrors your repo root). Use relative paths.
 **What it is:** Which of the standard Plutus framework steps this is. One of:
 
 - `step_1_hypothesis`
-- `step_2_data_collection`
-- `step_3_data_processing`
+- `step_2_data_preparation`
+- `step_3_forming_set_of_rules`
 - `step_4_in_sample`
 - `step_5_optimization`
 - `step_6_out_of_sample`
@@ -220,6 +218,36 @@ the repo exercises.
 - id: train_classifier
   nine_step: null            # free-form ML step; not in the framework
   label: "Custom: train classifier"
+```
+
+---
+
+## 6b. `steps[].sub_processes` — document data preparation (optional)
+
+**What it is:** An optional, documentation-only breakdown of the
+`data_preparation` step into its two v2025 sub-processes, `collection` and
+`processing`. Only valid on the data_preparation step.
+
+**Why:** When a repo actually collects and/or processes data, this records
+**what** each sub-activity is and **how** it's performed. The verifier never
+runs these — the step's own `command` (or a satisfying `data_source`) is what
+executes. Omit the block entirely on the happy path where you just download
+ready-to-use files.
+
+**Example:**
+
+```yaml
+- id: data_preparation
+  nine_step: step_2_data_preparation
+  required: true
+  command: "python data_loader.py"
+  sub_processes:                 # optional; both slots individually optional
+    collection:
+      description: "query the DB for raw VN30F ticks"   # required if slot present
+      command: "python data_loader.py --collect"        # optional
+      outputs: [data/raw/x.csv]                          # optional
+    processing:
+      description: "clean + resample raw ticks to backtest inputs"
 ```
 
 ---
@@ -275,8 +303,8 @@ verification report.
 ```yaml
 nine_step_coverage:
   step_1_hypothesis: {present: true, section: "Hypothesis"}
-  step_2_data_collection: {present: true, section: "Data Collection"}
-  step_3_data_processing: {present: false, section: null}
+  step_2_data_preparation: {present: true, section: "Data Preparation"}
+  step_3_forming_set_of_rules: {present: false, section: null}
   step_4_in_sample: {present: true, section: "In-sample Backtesting"}
   step_5_optimization: {present: true, section: "Optimization"}
   step_6_out_of_sample: {present: true, section: "Out-of-sample Backtesting"}

@@ -15,9 +15,9 @@ The (up to 5) mutually-exclusive choices presented in Phase 2's single `AskUserQ
 **Question**: "How should the backtest data be sourced?"
 
 **Options**:
-- **DB-backed loader in container** (Tier 3) — `data_collection` step runs `network: bridge`, reads DB secrets from `.env`. *(Recommended when a working DB-loader script exists and the repo has no Drive folder shipping every required file.)*
-- **Drive-backed raw data** (Tier 2) — `data_sources.raw[]` entry with `kind: google_drive`. `data_collection` keeps a download command but the verifier skips if the Drive fetch succeeds.
-- **Processed CSVs committed** (Tier 1) — `data_sources.processed[]` entry; `data_collection` step omitted entirely. Requires overriding any `*.csv` in `.gitignore`.
+- **DB-backed loader in container** (Tier 3) — `data_preparation` step runs `network: bridge`, reads DB secrets from `.env`. *(Recommended when a working DB-loader script exists and the repo has no Drive folder shipping every required file.)*
+- **Drive-backed raw data** (Tier 2) — `data_sources.raw[]` entry with `kind: google_drive`. `data_preparation` keeps a download command but the verifier skips if the Drive fetch succeeds.
+- **Processed CSVs committed** (Tier 1) — `data_sources.processed[]` entry; `data_preparation` step omitted entirely. Requires overriding any `*.csv` in `.gitignore`.
 - **Layered (Drive primary + DB fallback)** — Most flexible, most manifest complexity. Recommend against unless explicitly needed.
 
 **Default**: DB-backed (Tier 3). Pick Tier 2 only if a Drive folder ships *all* required files. Pick Tier 1 only if data is small and the maintainer is OK committing it. Avoid layered for v1 of any repo's plutus integration.

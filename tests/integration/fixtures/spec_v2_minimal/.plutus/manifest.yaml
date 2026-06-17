@@ -13,16 +13,16 @@ data_sources:
     - kind: github_release
       url: https://example.com/raw.tar.gz
       expected_layout: ["data/raw/*.parquet"]
-      satisfies: [data_collection]
+      satisfies: [data_preparation]
 steps:
-  - id: data_collection
-    nine_step: step_2_data_collection
+  - id: data_preparation
+    nine_step: step_2_data_preparation
     required: true
     network: bridge
     command: "python -c 'print(\"collect\")'"
     outputs: ["data/raw/x.parquet"]
-  - id: data_processing
-    nine_step: step_3_data_processing
+  - id: forming_rules
+    nine_step: step_3_forming_set_of_rules
     required: true
     command: "python -c 'print(\"preprocess\")'"
     inputs: [data/raw]
@@ -42,6 +42,6 @@ expected:
         tolerance: {kind: relative, value: 0.05}
     artifacts: []
 nine_step_coverage:
-  step_2_data_collection: {present: true, section: "Data"}
-  step_3_data_processing: {present: true, section: "Preprocess"}
+  step_2_data_preparation: {present: true, section: "Data"}
+  step_3_forming_set_of_rules: {present: true, section: "Preprocess"}
   step_4_in_sample: {present: true, section: "In-sample"}

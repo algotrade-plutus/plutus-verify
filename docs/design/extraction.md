@@ -134,8 +134,14 @@ validate_plan (validator.py) ── Phase 1 deterministic ──► plan.json
   (`relative`/`absolute`/`exact`).
 - `ExpectedChart` (`:303`): `name`, `produced_path`, optional `reference_image`.
 
-The "nine-step" mapping uses `NINE_STEP_KEYS` from `constants.py` — which, despite
-the name, holds **7** keys (`step_1_hypothesis` … `step_7_paper_trading`).
+The "nine-step" mapping is **frozen on the v2023 taxonomy**: the extraction path
+binds `LEGACY_NINE_STEP_KEYS` from `constants.py` (under the local alias
+`NINE_STEP_KEYS` in `extract/plan.py`), holding **7** keys
+(`step_1_hypothesis`, `step_2_data_collection`, `step_3_data_processing`,
+`step_4_in_sample` … `step_7_paper_trading`). This is deliberately decoupled
+from the live `constants.NINE_STEP_KEYS` (the v2025 taxonomy the manifest
+contract speaks); the LLM-extraction path is no longer developed, and the
+`adapter`/`extract_to_v2` bridges translate between the two taxonomies.
 
 ## Error Handling & Edge Cases
 

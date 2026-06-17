@@ -24,6 +24,7 @@ from typing import Optional
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
+from plutus_verify.constants import NINE_STEP_KEYS
 from plutus_verify.scaffold.manifest_template_todo import MANIFEST_TODO_MD
 from plutus_verify.spec.runtime.results import load_results
 
@@ -226,7 +227,7 @@ def _build_manifest_dict(
     data.yaml_set_comment_before_after_key(
         "steps",
         after=(
-            "TODO_steps: add data_collection / data_processing / optimization "
+            "TODO_steps: add data_preparation / optimization "
             "steps\nthat don't run pv.step (see manifest_TODO.md)"
         ),
         after_indent=2,
@@ -274,17 +275,9 @@ def _build_manifest_dict(
 
     data["expected"] = expected_seq
 
-    # nine_step_coverage
+    # nine_step_coverage — keyed by the canonical taxonomy (single source of truth)
     coverage = CommentedMap()
-    for key in (
-        "step_1_hypothesis",
-        "step_2_data_collection",
-        "step_3_data_processing",
-        "step_4_in_sample",
-        "step_5_optimization",
-        "step_6_out_of_sample",
-        "step_7_paper_trading",
-    ):
+    for key in NINE_STEP_KEYS:
         inner = CommentedMap()
         inner["present"] = False
         inner["section"] = None

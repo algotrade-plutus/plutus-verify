@@ -12,21 +12,35 @@ Documented losses (each emits an extraction_notes entry on the returned plan):
   - artifacts of compare != visual_similarity (Plan 2 adds full comparator)
   - data_sources.processed entries that span multiple steps (Plan 2 has tier resolver)
   - steps[*].nine_step == None becomes step_4_in_sample placeholder
+  - v2025 keys are translated to the frozen v2023 taxonomy the v1 plan speaks;
+    step_3_forming_set_of_rules has no v1 equivalent and becomes the placeholder
 """
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from plutus_verify.spec.manifest import (
-    Manifest,
-    NINE_STEP_KEYS,
-)
+from plutus_verify.constants import LEGACY_NINE_STEP_KEYS
+from plutus_verify.spec.manifest import Manifest
 
 if TYPE_CHECKING:
     from plutus_verify.extract.plan import ExtractedPlan
 
 
 _FREE_FORM_PLACEHOLDER = "step_4_in_sample"
+
+# The v1 ExtractedPlan is frozen on the v2023 taxonomy. Translate the v2025
+# manifest keys at this boundary. step_2_data_preparation maps onto the v1 data
+# step; step_3_forming_set_of_rules has no v1 equivalent (v1 step 3 was data
+# processing, now folded into data_preparation) and falls back to the placeholder.
+_V2_TO_LEGACY_NINE_STEP = {
+    "step_1_hypothesis": "step_1_hypothesis",
+    "step_2_data_preparation": "step_2_data_collection",
+    "step_3_forming_set_of_rules": None,
+    "step_4_in_sample": "step_4_in_sample",
+    "step_5_optimization": "step_5_optimization",
+    "step_6_out_of_sample": "step_6_out_of_sample",
+    "step_7_paper_trading": "step_7_paper_trading",
+}
 
 
 def to_extracted_plan(m: Manifest) -> "ExtractedPlan":
@@ -112,7 +126,15 @@ def to_extracted_plan(m: Manifest) -> "ExtractedPlan":
             )
             nine_step = _FREE_FORM_PLACEHOLDER
         else:
-            nine_step = s.nine_step
+            legacy = _V2_TO_LEGACY_NINE_STEP.get(s.nine_step)
+            if legacy is None:
+                notes.append(
+                    f"v2 step '{s.id}' nine_step={s.nine_step} has no v1 "
+                    f"equivalent; mapped to placeholder {_FREE_FORM_PLACEHOLDER}."
+                )
+                nine_step = _FREE_FORM_PLACEHOLDER
+            else:
+                nine_step = legacy
 
         if s.inputs:
             notes.append(
@@ -200,10 +222,15 @@ def to_extracted_plan(m: Manifest) -> "ExtractedPlan":
 
     expected_results = tuple(_build_expected(er) for er in m.expected)
 
-    # Build nine_step mapping
-    mapping = {k: NineStepEntry(present=False, section_heading=None, confidence=1.0) for k in NINE_STEP_KEYS}
+    # Build nine_step mapping — keyed by the frozen v2023 taxonomy the v1 plan
+    # expects, translating the v2025 coverage keys in. Coverage for
+    # step_3_forming_set_of_rules has no legacy slot and is dropped.
+    mapping = {k: NineStepEntry(present=False, section_heading=None, confidence=1.0) for k in LEGACY_NINE_STEP_KEYS}
     for k, v in m.nine_step_coverage.items():
-        mapping[k] = NineStepEntry(present=v.present, section_heading=v.section, confidence=1.0)
+        legacy = _V2_TO_LEGACY_NINE_STEP.get(k)
+        if legacy is None:
+            continue
+        mapping[legacy] = NineStepEntry(present=v.present, section_heading=v.section, confidence=1.0)
 
     return ExtractedPlan(
         schema_version="1.0",

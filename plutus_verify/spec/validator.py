@@ -1,7 +1,8 @@
 """Cross-field invariants for the v2 manifest.
 
 JSON-Schema validates structure; this module enforces relationships:
-  - data_collection / data_processing steps must declare a command
+  - the data_preparation step must declare a command
+  - sub_processes is only allowed on the data_preparation step
   - step ids unique
   - every depends_on references an existing step
   - every expected.step_id references an existing step
@@ -17,7 +18,7 @@ class ManifestInvariantError(ValueError):
     """Raised when a structurally-valid manifest violates a cross-field rule."""
 
 
-_DATA_STEP_IDS = ("data_collection", "data_processing")
+_DATA_STEP_IDS = ("data_preparation",)
 
 
 def check_invariants(m: Manifest) -> None:
@@ -33,6 +34,11 @@ def check_invariants(m: Manifest) -> None:
             raise ManifestInvariantError(
                 f"step '{s.id}' requires a non-empty command (data steps must "
                 "have runnable code even when data_sources provides downloads)"
+            )
+        if s.sub_processes is not None and s.nine_step != "step_2_data_preparation":
+            raise ManifestInvariantError(
+                f"step '{s.id}' declares sub_processes, which is only allowed on "
+                "the data_preparation step (nine_step: step_2_data_preparation)"
             )
         for dep in s.depends_on:
             if dep not in step_id_set:

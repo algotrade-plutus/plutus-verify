@@ -52,6 +52,24 @@ class DataSourceTiers:
 
 
 @dataclass(frozen=True)
+class SubProcess:
+    """One documented sub-activity of the data_preparation step. Documentation
+    only — never executed by the verifier."""
+    description: str
+    command: Optional[str] = None
+    inputs: tuple[str, ...] = ()
+    outputs: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class SubProcesses:
+    """The v2025 data_preparation step's two sub-processes. Optional; each slot is
+    individually optional. Restricted to the data_preparation step by the validator."""
+    collection: Optional[SubProcess] = None
+    processing: Optional[SubProcess] = None
+
+
+@dataclass(frozen=True)
 class Step:
     id: str
     nine_step: Optional[str]
@@ -64,6 +82,7 @@ class Step:
     outputs: tuple[str, ...] = ()
     depends_on: tuple[str, ...] = ()
     verification_mode: Literal["execute", "artifact_check"] = "execute"
+    sub_processes: Optional[SubProcesses] = None
 
 
 @dataclass(frozen=True)

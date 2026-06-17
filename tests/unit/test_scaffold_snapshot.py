@@ -85,8 +85,8 @@ expected:
 
 nine_step_coverage:
   step_1_hypothesis: {present: true, section: "hyp"}
-  step_2_data_collection: {present: true, section: "dc"}
-  step_3_data_processing: {present: true, section: "dp"}
+  step_2_data_preparation: {present: true, section: "dc"}
+  step_3_forming_set_of_rules: {present: true, section: "dp"}
   step_4_in_sample: {present: true, section: "is"}
   step_5_optimization: {present: false, section: null}
   step_6_out_of_sample: {present: true, section: "oos"}

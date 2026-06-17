@@ -71,7 +71,7 @@ machine contract the verifier reads verbatim.
 
 #### Validator — `plutus_verify/spec/validator.py`
 - **Purpose:** cross-field invariants JSON Schema can't express:
-  unique step ids; `data_collection`/`data_processing` must carry a `command`;
+  unique step ids; the `data_preparation` step must carry a `command`;
   `depends_on`, `expected.step_id`, and `satisfies` must reference real steps;
   `secrets[].used_by` must reference real steps (except `data_sources.`-prefixed
   qualifiers). Raises `ManifestInvariantError`. `check_invariants` (`:23`).

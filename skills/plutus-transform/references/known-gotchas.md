@@ -162,7 +162,7 @@ Empty output (no difference) means baseline matches the v1 commit — correct. A
 > below remains useful only for diagnosing whether you're on a
 > pre-0.2.10 framework.
 
-**Symptom.** `data_collection` (or any Tier 3 bridge step) exits 0 quickly. With `--secrets-from-env` and no `DB_*` env vars in the host shell (`env | grep '^DB_'` returns nothing), the step still passes. On the second `plutus check` run, the host's cached parquet's mtime is unchanged — the DB was never queried.
+**Symptom.** `data_preparation` (or any Tier 3 bridge step) exits 0 quickly. With `--secrets-from-env` and no `DB_*` env vars in the host shell (`env | grep '^DB_'` returns nothing), the step still passes. On the second `plutus check` run, the host's cached parquet's mtime is unchanged — the DB was never queried.
 
 **Diagnosis.** 0.2.9's `.dockerignore` correctly excludes `.env`, `data/cache/`, etc. from the **image build context**. But `runner_docker.py` runs each step with `-v {cwd}:/srv/repo`, which is an **unfiltered Docker volume mount**. The mount overlays the host's full working directory onto the container — `.dockerignore` is a build-context concept and doesn't apply at runtime.
 
@@ -214,7 +214,7 @@ python: can't open file '/srv/repo/scripts/plutus_emit_in_sample.py': [Errno 2] 
 
 **Fix.** Either set `inputs: []` (lets `.dockerignore`-only filter handle the default copy — same as v0.2.9 behavior) OR expand `inputs` to cover every file the script needs.
 
-- For Tier 3 `data_collection`, typical minimum: `[src/, config/, pyproject.toml, .env.example]`.
+- For Tier 3 `data_preparation`, typical minimum: `[src/, config/, pyproject.toml, .env.example]`.
 - For wrapper scripts: `[scripts/<wrapper>.py, reports/<run>/]`.
 
 **Detection.** Manual repro (bypasses staging by mounting cwd directly — only works as a diagnostic, not a production substitute):

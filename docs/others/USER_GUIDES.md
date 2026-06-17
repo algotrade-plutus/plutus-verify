@@ -112,8 +112,8 @@ Map each stage to one of the **seven PLUTUS nine-step keys**:
 
 ```
 step_1_hypothesis         (descriptive, never executable)
-step_2_data_collection
-step_3_data_processing
+step_2_data_preparation
+step_3_forming_set_of_rules
 step_4_in_sample
 step_5_optimization
 step_6_out_of_sample
@@ -121,7 +121,7 @@ step_7_paper_trading      (rarely executable in a verification context)
 ```
 
 A repo with no live-trading component will typically have:
-`data_collection` + `in_sample_backtest` + (`optimization` as artifact_check)
+`data_preparation` + `in_sample_backtest` + (`optimization` as artifact_check)
 + `out_of_sample_backtest`. Four steps total.
 
 ---
@@ -290,7 +290,7 @@ Three tiers, in priority order:
 |---|---|---|
 | 1 | `processed` | The repo ships processed data files committed to the repo — `plutus check` uses them as-is. |
 | 2 | `raw` | The repo's data lives at an external URL (`google_drive`, `github_release`, `http`); `plutus check` downloads it before the data step runs. |
-| 3 | (none) | The repo's `data_collection` step is run inside the container to produce the data fresh (needs secrets). |
+| 3 | (none) | The repo's `data_preparation` step is run inside the container to produce the data fresh (needs secrets). |
 
 The verifier picks the highest tier whose layout the data step's
 `outputs:` matches. Most academic repos use Tier 2 (Google Drive folder
@@ -304,20 +304,20 @@ data_sources:
       expected_layout:
         - data/is/<file>.csv
         - data/os/<file>.csv
-      satisfies: [data_collection]
+      satisfies: [data_preparation]
 ```
 
 ### 7.4 `steps[]` — the four-step canonical shape
 
 Bootstrap only auto-detects steps that emitted a `results.json` (i.e.
 ones you wrapped with `pv.step`). You'll typically need to **add by hand**
-the steps that DON'T emit metrics — `data_collection` and `optimization`
+the steps that DON'T emit metrics — `data_preparation` and `optimization`
 (when in `artifact_check` mode).
 
 ```yaml
 steps:
-  - id: data_collection
-    nine_step: step_2_data_collection
+  - id: data_preparation
+    nine_step: step_2_data_preparation
     required: true
     network: bridge        # needs internet
     timeout_seconds: 1800
@@ -335,7 +335,7 @@ steps:
     verification_mode: artifact_check
     inputs:  [parameter/optimization_parameter.json]
     outputs: [parameter/optimized_parameter.json]
-    depends_on: [data_collection]
+    depends_on: [data_preparation]
 
   # Then the auto-detected entries — fill the TODO_* fields:
   - id: in_sample_backtest      # (auto-detected from .plutus/run/)
@@ -345,7 +345,7 @@ steps:
     inputs:
       - data/is/<file>.csv
       - parameter/backtesting_parameter.json
-    depends_on: [data_collection]
+    depends_on: [data_preparation]
     # ... outputs (already filled by bootstrap)
 
   - id: out_of_sample_backtest
@@ -378,8 +378,8 @@ README describe in prose?
 ```yaml
 nine_step_coverage:
   step_1_hypothesis:       {present: true,  section: "Hypothesis"}
-  step_2_data_collection:  {present: true,  section: "Data Collection"}
-  step_3_data_processing:  {present: false, section: null}
+  step_2_data_preparation:  {present: true,  section: "Data Preparation"}
+  step_3_forming_set_of_rules:  {present: false, section: null}
   step_4_in_sample:        {present: true,  section: "In-sample Backtesting"}
   step_5_optimization:     {present: true,  section: "Optimization"}
   step_6_out_of_sample:    {present: true,  section: "Out-of-sample Backtesting"}
@@ -490,7 +490,7 @@ The verifier will:
 **Read the output carefully.** A clean pass looks like:
 
 ```
-  ok data_collection: exit=0 (skipped: satisfied_by_data_source)
+  ok data_preparation: exit=0 (skipped: satisfied_by_data_source)
   ok in_sample_backtest: exit=0
   ok optimization: exit=0 (skipped: artifact_check ...)
   ok out_of_sample_backtest: exit=0

@@ -34,7 +34,7 @@ Score against this checklist (~5 points each):
 - Has `.python-version` or equivalent pin, plus CI workflow
 
 ### Standardized / template (10)
-- **10** — Canonical 4-step shape (`data_collection` → `in_sample_backtest` → `optimization` → `out_of_sample_backtest`), parameters externalized to `parameter/*.json`, charts in predictable `result/{backtest,optimization}/` paths, no module-level side effects.
+- **10** — Canonical 4-step shape (`data_preparation` → `in_sample_backtest` → `optimization` → `out_of_sample_backtest`), parameters externalized to `parameter/*.json`, charts in predictable `result/{backtest,optimization}/` paths, no module-level side effects.
 - **5** — Most of the above but one significant deviation (e.g., DB-at-import anti-pattern, divergent paper-trading script shape).
 - **0** — Could not serve as a template without significant rework.
 

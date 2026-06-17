@@ -176,8 +176,24 @@ def test_emitted_yaml_translates_manual_download_to_data_source():
 
 def test_emitted_yaml_marks_low_confidence_nine_steps():
     text = to_v2_manifest_yaml(_minimal_plan())
-    # nine_step_3_data_processing was present=False; confidence 0.4 (low) → expect a TODO
+    # The old step_3_data_processing (conf 0.4) merges into step_2_data_preparation,
+    # carrying the low confidence → expect a TODO marker on the coverage block.
     assert "TODO(plutus-transfer)" in text
+
+
+def test_emitted_yaml_uses_v2025_taxonomy():
+    """The draft must speak the v2025 taxonomy even though the input plan uses the
+    frozen v2023 keys; both v1 data keys collapse onto step_2_data_preparation."""
+    text = to_v2_manifest_yaml(_minimal_plan())
+    data = yaml.safe_load(text)
+    cov = data["nine_step_coverage"]
+    assert "step_2_data_preparation" in cov
+    assert "step_3_forming_set_of_rules" in cov
+    assert "step_2_data_collection" not in cov
+    assert "step_3_data_processing" not in cov
+    # the v1 data_collection step's nine_step is translated in the steps block
+    dc = next(s for s in data["steps"] if s["id"] == "data_collection")
+    assert dc["nine_step"] == "step_2_data_preparation"
 
 
 def _plan_with_metric(name: str, value) -> ExtractedPlan:
