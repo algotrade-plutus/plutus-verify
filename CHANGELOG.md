@@ -4,6 +4,22 @@ All notable changes to `plutus-verify` are recorded here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 project is pre-1.0 and uses calendar-driven minor bumps.
 
+## [0.4.1] — 2026-06-18
+
+Fixes the uv-locked env path so steps can actually run.
+
+### Fixed — uv venv unreachable at step runtime
+
+- Steps now run under a non-login shell (`bash -c` instead of `bash -lc`). On the
+  Debian `python-slim` base, a login shell re-sources `/etc/profile`, which resets
+  `PATH` and dropped the `/opt/venv/bin` set by the uv Dockerfile's `ENV PATH` — so
+  `manager: uv` repos built green but every step failed with `ModuleNotFoundError`
+  (both locked deps and the injected SDK were invisible to the system python that
+  ran the step). The pip path was unaffected because it installs into that system
+  python. `bash -c` inherits the container's `ENV PATH` verbatim; metrics are
+  unchanged. Added `tests/unit/test_runner_docker.py` to guard the runner's shell
+  flag — the gap a Dockerfile-string assertion can't see.
+
 ## [0.4.0] — 2026-06-18
 
 Adds reproducible-environment support to the verify flow: the verifier can

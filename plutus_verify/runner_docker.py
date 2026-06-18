@@ -61,7 +61,11 @@ class DockerRunner(Runner):
         for k, v in env.items():
             args += ["-e", f"{k}={v}"]
         args += list(self._cfg.extra_args)
-        args += [image, "bash", "-lc", command]
+        # Non-login shell: inherits the container's ENV PATH verbatim so the uv
+        # venv at /opt/venv/bin is on PATH. `bash -lc` re-sources /etc/profile on
+        # the Debian slim base, which resets PATH and hides the venv (the pip path
+        # is unaffected — it installs into the system python, still on PATH).
+        args += [image, "bash", "-c", command]
         start = time.monotonic()
         try:
             proc = subprocess.run(

@@ -65,9 +65,12 @@ per step:  TemporaryDirectory(staging)
 #### Docker runner — `plutus_verify/runner_docker.py`
 - `DockerRunner.run(*, image, command, cwd, network, timeout_seconds, env)`
   (`:36`) builds `docker run --rm --network=<net> --memory=8g --cpus=4
-  -v {cwd}:/srv/repo -w /srv/repo [-e K=V …] <image> bash -lc <command>`.
-  Secrets are injected at runtime via `-e`, never baked into the image. On
-  timeout → `ExecResult(exit_code=-1, outcome=TIMEOUT)`.
+  -v {cwd}:/srv/repo -w /srv/repo [-e K=V …] <image> bash -c <command>`.
+  The shell is **non-login** (`bash -c`, not `-lc`) so it inherits the image's
+  `ENV PATH` verbatim — a login shell re-sources `/etc/profile` on the Debian
+  slim base and resets `PATH`, which would hide the uv venv at `/opt/venv/bin`
+  (0.4.1). Secrets are injected at runtime via `-e`, never baked into the image.
+  On timeout → `ExecResult(exit_code=-1, outcome=TIMEOUT)`.
 
 #### Staging — `plutus_verify/spec/runtime/staging.py`
 - `populate_staging(cwd, staging, step)` (`:29`) copies cwd into a per-step
@@ -140,6 +143,11 @@ per step:  TemporaryDirectory(staging)
   bind-mounts over `/srv/repo` at run time and would shadow an in-project
   `.venv` (pip's system site-packages survive for the same reason). The SDK
   installs into that venv via `uv pip install --python` (uv venvs ship no pip).
+  Activation is purely `ENV PATH=/opt/venv/bin:$PATH`, so the runner must execute
+  steps under a **non-login** shell (`bash -c`); `bash -lc` would re-source
+  `/etc/profile` and reset `PATH`, leaving steps on the system python (fixed in
+  0.4.1 — `dockerfile_gen` and `runner_docker` must agree on the activation
+  mechanism, and a Dockerfile-string test can't see the runner's shell flag).
 - **Rationale:** a restored lockfile closes the dependency-drift hole;
   `--frozen` fails the build if the lock and `pyproject.toml` disagree (an
   integrity signal); pinning the uv version keeps the lock format reproducible.

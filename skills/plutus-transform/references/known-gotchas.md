@@ -30,8 +30,12 @@ to address: Temporary failure in name resolution
 docker images | grep plutus-v2          # find current image
 docker run --rm --network=none \
   -v "$PWD:/srv/repo" -w /srv/repo \
-  plutus-v2:<hash> bash -lc "python <step-script>.py 2>&1; echo EXIT=\$?"
+  plutus-v2:<hash> bash -c "python <step-script>.py 2>&1; echo EXIT=\$?"
 ```
+
+> Use `bash -c` (non-login), exactly as the runner does — a login shell (`-lc`)
+> re-sources `/etc/profile` and drops the uv venv's `/opt/venv/bin` from `PATH`,
+> so a `manager: uv` repo would fail the manual repro while `plutus check` passes.
 
 **Fix (manifest-only, no source change).**
 1. Affected step: `network: none` → `network: bridge`
@@ -107,7 +111,7 @@ plutus check . --secrets-from-env
 docker run --rm \
   --network=<bridge|none from manifest> \
   -v "$PWD:/srv/repo" -w /srv/repo \
-  plutus-v2:<hash> bash -lc "<step command> 2>&1; echo EXIT=\$?"
+  plutus-v2:<hash> bash -c "<step command> 2>&1; echo EXIT=\$?"
 ```
 0.2.6 added per-step artifact rendering. Step stderr surfacing is still a separate deferred item — manual repro remains the diagnostic path.
 
@@ -219,7 +223,7 @@ python: can't open file '/srv/repo/scripts/plutus_emit_in_sample.py': [Errno 2] 
 ```bash
 docker run --rm --network=none \
   -v "$PWD:/srv/repo" -w /srv/repo \
-  <image> bash -lc "<step.command> 2>&1; echo EXIT=\$?"
+  <image> bash -c "<step.command> 2>&1; echo EXIT=\$?"
 ```
 
 If this succeeds (because the host's full tree is mounted), then the step works in principle — the failure is staging-filter scope, not a real bug. Compare what the manual repro had access to vs what `step.inputs` declared.
