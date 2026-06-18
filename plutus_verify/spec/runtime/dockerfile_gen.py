@@ -8,6 +8,10 @@ from __future__ import annotations
 
 from plutus_verify.spec.manifest import Env, Secret
 
+# The uv version the verifier blesses. Pinned so the lock format and resolution
+# are themselves reproducible; bump deliberately when validating a newer uv.
+_UV_VERSION = "0.7.0"
+
 
 class UnsupportedEnvError(NotImplementedError):
     """Raised when an Env asks for capability not yet implemented."""
@@ -45,38 +49,68 @@ def generate_dockerfile(
                 "    && rm -rf /var/lib/apt/lists/*",
             ]
         )
-    if env.requirements_file:
-        # pyproject.toml (and PEP-518 build configs in general) needs
-        # `pip install .` against the project directory, not `pip
-        # install -r` which is for line-delimited requirements files.
-        # Detection is on filename rather than extension so future
-        # variants (e.g. setup.py) can be added explicitly.
-        is_project_install = env.requirements_file.endswith("pyproject.toml")
-        if is_project_install:
-            lines.extend(
-                [
-                    f"COPY {env.requirements_file} .",
-                    "RUN pip install --no-cache-dir .",
-                ]
-            )
-        else:
-            lines.extend(
-                [
-                    f"COPY {env.requirements_file} .",
-                    f"RUN pip install --no-cache-dir -r {env.requirements_file}",
-                ]
-            )
-    if sdk_wheel_basename:
-        # Stage the verifier SDK so author scripts can `import plutus_verify`
-        # without touching their own requirements.txt. The wheel is placed in
-        # the build context at .plutus/build/<basename> by the orchestrator
-        # before `docker build` is invoked.
+    if env.manager == "uv":
+        # Reproducible path: restore the committed lockfile exactly with uv.
+        # The env lives OUTSIDE /srv/repo (via UV_PROJECT_ENVIRONMENT) because the
+        # runtime bind-mounts the staging copy over /srv/repo at execution time,
+        # which would shadow an in-project .venv. `--frozen` fails the build if the
+        # lock and pyproject.toml disagree — that failure is the integrity signal.
+        lockfile = env.lockfile or "uv.lock"
         lines.extend(
             [
-                f"COPY .plutus/build/{sdk_wheel_basename} /tmp/{sdk_wheel_basename}",
-                f"RUN pip install --no-cache-dir /tmp/{sdk_wheel_basename}",
+                f"RUN pip install --no-cache-dir uv=={_UV_VERSION}",
+                "ENV UV_PROJECT_ENVIRONMENT=/opt/venv",
+                f"COPY pyproject.toml {lockfile} ./",
+                "RUN uv sync --frozen --no-install-project",
+                'ENV PATH="/opt/venv/bin:$PATH"',
             ]
         )
+        if sdk_wheel_basename:
+            # uv-created venvs ship without pip, so install the SDK via uv into
+            # the same venv the step commands will run in.
+            lines.extend(
+                [
+                    f"COPY .plutus/build/{sdk_wheel_basename} /tmp/{sdk_wheel_basename}",
+                    f"RUN uv pip install --python /opt/venv/bin/python "
+                    f"--no-cache-dir /tmp/{sdk_wheel_basename}",
+                ]
+            )
+    else:
+        # Deprecated pip path: dependencies are re-resolved at build time, so the
+        # restored env may drift from what the author had (see env reproducibility
+        # note in the check report).
+        if env.requirements_file:
+            # pyproject.toml (and PEP-518 build configs in general) needs
+            # `pip install .` against the project directory, not `pip
+            # install -r` which is for line-delimited requirements files.
+            # Detection is on filename rather than extension so future
+            # variants (e.g. setup.py) can be added explicitly.
+            is_project_install = env.requirements_file.endswith("pyproject.toml")
+            if is_project_install:
+                lines.extend(
+                    [
+                        f"COPY {env.requirements_file} .",
+                        "RUN pip install --no-cache-dir .",
+                    ]
+                )
+            else:
+                lines.extend(
+                    [
+                        f"COPY {env.requirements_file} .",
+                        f"RUN pip install --no-cache-dir -r {env.requirements_file}",
+                    ]
+                )
+        if sdk_wheel_basename:
+            # Stage the verifier SDK so author scripts can `import plutus_verify`
+            # without touching their own requirements. The wheel is placed in
+            # the build context at .plutus/build/<basename> by the orchestrator
+            # before `docker build` is invoked.
+            lines.extend(
+                [
+                    f"COPY .plutus/build/{sdk_wheel_basename} /tmp/{sdk_wheel_basename}",
+                    f"RUN pip install --no-cache-dir /tmp/{sdk_wheel_basename}",
+                ]
+            )
     lines.extend(
         [
             "COPY . .",

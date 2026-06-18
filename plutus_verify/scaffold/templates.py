@@ -12,7 +12,13 @@ repo:
 env:
   base: python
   python_version: "3.11"
-  requirements_file: requirements.txt
+  # Recommended: lock dependencies with uv and commit uv.lock — the verifier
+  # restores the exact locked env (run `uv lock` to generate it). The pip path
+  # below re-resolves at build time and is deprecated (verify emits a notice).
+  manager: uv
+  lockfile: uv.lock
+  # manager: pip                       # deprecated fallback
+  # requirements_file: requirements.txt
   # os_packages: [build-essential]
   # gpu_required: false
 

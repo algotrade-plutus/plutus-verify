@@ -23,6 +23,11 @@ class Repo:
 class Env:
     base: Literal["python", "python-cuda", "none"]
     python_version: str
+    # `uv` (locked, reproducible) is the recommended manager; `pip` (re-resolved
+    # at build time) is the deprecated default kept for back-compat. With `uv`,
+    # `lockfile` must point at the committed lockfile the verifier restores.
+    manager: Literal["uv", "pip"] = "pip"
+    lockfile: Optional[str] = None
     requirements_file: Optional[str] = None
     os_packages: tuple[str, ...] = ()
     gpu_required: bool = False

@@ -64,7 +64,9 @@ repo:
 env:
   base: python                         # python | python-cuda | none
   python_version: "3.11"
-  requirements_file: requirements.txt  # or pyproject.toml; null if none
+  manager: uv                          # uv (locked, recommended) | pip (deprecated)
+  lockfile: uv.lock                    # required when manager: uv
+  # requirements_file: requirements.txt  # pip path only; or pyproject.toml; null if none
   os_packages: [build-essential]       # optional apt packages
   gpu_required: false
 secrets:
@@ -167,6 +169,22 @@ repo just downloads ready-to-use files.
 
 When present, the collection/processing descriptions are surfaced under the
 **Step 2: Data Preparation** section of `plutus check` output.
+
+### Reproducible environments (uv)
+
+`env.manager` selects how the verifier materializes the environment:
+
+- **`uv`** (recommended) — the verifier restores the committed lockfile exactly
+  with `uv sync --frozen`, so the env matches what the author had. Requires
+  `env.lockfile` (e.g. `uv.lock`). `--frozen` fails the build if the lock and
+  `pyproject.toml` disagree — that failure is the integrity signal.
+- **`pip`** (default, deprecated) — dependencies are re-resolved at build time
+  from `requirements_file`, so the restored env may drift from the author's.
+
+A non-`uv` (or lockfile-less) env is **not reproducibly locked**: `plutus check`
+reports `env: NOT reproducible` and emits a deprecation note. This is a notice
+today; it will become a soft fail (exit 1) in a future release. Pin with uv + a
+committed lockfile to clear it.
 
 ### Data tiers
 

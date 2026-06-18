@@ -71,6 +71,10 @@ class V2RuntimeResult:
     metric_results: dict[str, dict[str, ExpectedMetricResult]] = field(default_factory=dict)
     artifact_results: dict[str, list[CompareResult]] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
+    # True iff the env is restored from a committed lockfile (env.manager == 'uv'
+    # with a lockfile). When False the env is re-resolved at build time and may
+    # drift — surfaced as a deprecation note now, a soft fail in a future release.
+    env_reproducible: bool = True
 
 
 ImageBuilder = Callable[[str, Path], str]  # (dockerfile_text, repo_path) -> image_tag
@@ -137,8 +141,21 @@ def run_v2_pipeline(
         force_tier=force_data_tier,
     )
 
-    result = V2RuntimeResult(image=image, data_tier_used=tier.tier_used)
+    env_reproducible = manifest.env.manager == "uv" and bool(manifest.env.lockfile)
+    result = V2RuntimeResult(
+        image=image,
+        data_tier_used=tier.tier_used,
+        env_reproducible=env_reproducible,
+    )
     result.notes.extend(tier.notes)
+    if not env_reproducible:
+        result.notes.append(
+            "DEPRECATION: environment is not reproducibly locked "
+            "(env.manager != 'uv' or no env.lockfile). Dependencies are "
+            "re-resolved at build time, so results may not reproduce. Pin with "
+            "uv + a committed lockfile. This will become a soft fail (exit 1) in "
+            "a future release."
+        )
     if _sdk_bundle_error is not None:
         result.notes.append(f"SDK wheel not staged: {_sdk_bundle_error}")
     elif sdk_wheel_basename is not None:

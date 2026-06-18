@@ -32,7 +32,10 @@ repo:
 env:
   base: python
   python_version: '<PYTHON_VERSION>'
-  requirements_file: requirements.txt
+  manager: uv                 # recommended: verifier restores the committed lockfile
+  lockfile: uv.lock
+  # manager: pip              # deprecated fallback (verify emits a notice)
+  # requirements_file: requirements.txt
   os_packages: []
 
 secrets: []   # add entries if the Drive source needs auth, or if any step needs other secrets

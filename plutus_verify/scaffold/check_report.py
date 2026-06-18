@@ -33,6 +33,12 @@ def render_check_report(manifest: Manifest, runtime: V2RuntimeResult) -> list[st
     # Header
     lines.append(f"image: {runtime.image}")
     lines.append(f"data tier: {runtime.data_tier_used}")
+    env_reproducible = getattr(runtime, "env_reproducible", True)
+    lines.append(
+        "env: reproducible (locked)"
+        if env_reproducible
+        else "env: NOT reproducible (deprecated — pin with uv + lockfile)"
+    )
 
     # Group manifest.steps by nine_step.
     by_nine_step: dict[str, list[Step]] = {key: [] for key in NINE_STEP_KEYS}

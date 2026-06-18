@@ -77,6 +77,8 @@ def _build(d: dict[str, Any]) -> Manifest:
     env = Env(
         base=d["env"]["base"],
         python_version=d["env"]["python_version"],
+        manager=d["env"].get("manager", "pip"),
+        lockfile=d["env"].get("lockfile"),
         requirements_file=d["env"].get("requirements_file"),
         os_packages=tuple(d["env"].get("os_packages", ())),
         gpu_required=d["env"].get("gpu_required", False),

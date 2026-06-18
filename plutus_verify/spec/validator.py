@@ -1,6 +1,7 @@
 """Cross-field invariants for the v2 manifest.
 
 JSON-Schema validates structure; this module enforces relationships:
+  - env.manager 'uv' requires a lockfile
   - the data_preparation step must declare a command
   - sub_processes is only allowed on the data_preparation step
   - step ids unique
@@ -22,6 +23,12 @@ _DATA_STEP_IDS = ("data_preparation",)
 
 
 def check_invariants(m: Manifest) -> None:
+    if m.env.manager == "uv" and not m.env.lockfile:
+        raise ManifestInvariantError(
+            "env.manager 'uv' requires env.lockfile to point at a committed "
+            "lockfile (e.g. uv.lock) for the verifier to restore"
+        )
+
     step_ids = [s.id for s in m.steps]
     if len(set(step_ids)) != len(step_ids):
         dupes = sorted({sid for sid in step_ids if step_ids.count(sid) > 1})

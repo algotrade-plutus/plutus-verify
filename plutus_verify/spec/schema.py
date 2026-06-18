@@ -150,6 +150,8 @@ MANIFEST_SCHEMA: dict[str, Any] = {
             "properties": {
                 "base": {"type": "string", "enum": ["python", "python-cuda", "none"]},
                 "python_version": {"type": "string"},
+                "manager": {"type": "string", "enum": ["uv", "pip"]},
+                "lockfile": {"type": ["string", "null"]},
                 "requirements_file": {"type": ["string", "null"]},
                 "os_packages": {"type": "array", "items": {"type": "string"}},
                 "gpu_required": {"type": "boolean"},
