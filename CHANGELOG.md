@@ -4,6 +4,39 @@ All notable changes to `plutus-verify` are recorded here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 project is pre-1.0 and uses calendar-driven minor bumps.
 
+## [0.4.0] — 2026-06-18
+
+Adds reproducible-environment support to the verify flow: the verifier can
+restore a committed lockfile exactly (uv), and flags environments that aren't
+reproducibly locked. The `plutus-transform` skill is reframed to port repos to
+uv-lock-first. Non-breaking — the pip path remains the default.
+
+### Added — uv-locked environments (verify side)
+
+- `env.manager: uv | pip` (default `pip`) and `env.lockfile` in the manifest.
+  With `manager: uv`, the generated Dockerfile installs a pinned uv, restores the
+  committed lockfile with `uv sync --frozen` into a venv **outside** `/srv/repo`
+  (so the runtime staging mount can't shadow it), sets `PATH` to that venv, and
+  installs the SDK into it via `uv pip install`.
+- Validator invariant: `env.manager: uv` requires `env.lockfile`.
+- `plutus init` and the three skill manifest templates now scaffold the uv path.
+
+### Changed — non-reproducible env is flagged (Stage 1: warn-only)
+
+- A `pip`/lockfile-less environment is reported as `env: NOT reproducible` in
+  `plutus check` output, with a deprecation note. The exit code is unchanged for
+  now; this becomes a soft fail (exit 1) in a future release.
+
+### Changed — `plutus-transform` reframed to uv-lock-first
+
+- The transform skill now ports repos to uv instead of stripping pins. Phase 1
+  surveys for `pyproject.toml` + a committed `uv.lock`; **D5** is now "env
+  reproducibility — port to uv (`uv lock` + commit)" rather than "pin fix-up
+  (strip all)"; **G2** is resolved by loosening the one offending constraint and
+  re-locking (no silent strip-all). `SKILL.md`, `references/decision-tree.md`,
+  `references/known-gotchas.md`, the manifest templates, and the feature doc are
+  updated; the `v0.2.8` version note carries a "superseded" banner.
+
 ## [0.3.0] — 2026-06-17
 
 Aligns the manifest/results taxonomy with the 2025 revision of the PLUTUS

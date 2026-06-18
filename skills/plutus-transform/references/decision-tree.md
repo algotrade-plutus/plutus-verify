@@ -66,24 +66,24 @@ The (up to 5) mutually-exclusive choices presented in Phase 2's single `AskUserQ
 
 ---
 
-## D5 — Dependency-file pin fix-up
+## D5 — Env reproducibility (port to uv)
 
-**Always asked**, regardless of whether Phase 1 detected a conflict. Pin conflicts in v1-ish trading-research repos are common enough (Z-Bounce, ProtoMarketMaker both hit one) that pre-empting them in Phase 3 is cheaper than diagnosing the install failure mid-stream. See G2 in [`known-gotchas.md`](known-gotchas.md).
+**Always asked**, regardless of whether Phase 1 detected a conflict. A non-uv / lockfile-less env is now reported as `env: NOT reproducible` (a deprecation, becoming a soft-fail exit 1 later), so the env must be brought up to the `manager: uv` + committed-lockfile contract. Declaring deps in `pyproject.toml` and running `uv lock` once surfaces any conflict explicitly at lock time, and committing `uv.lock` makes the env reproducible. The Z-Bounce / ProtoMarketMaker pin conflicts are now resolved by loosening the one offending constraint and re-locking. See G2 in [`known-gotchas.md`](known-gotchas.md).
 
-This applies to whichever dependency file Phase 1 detected: `pyproject.toml` (preferred) or `requirements.txt` (fallback).
+The target state is `pyproject.toml` + committed `uv.lock` (`env.manager: uv`, `env.lockfile: uv.lock`). A `requirements.txt` (or a pin-only `pyproject.toml` with no lockfile) is a deprecated fallback to be PORTED: declare deps in `pyproject.toml`, run `uv lock`, commit `uv.lock`.
 
-**Header**: `Pin fix-up`
+**Header**: `Env reproducibility`
 
-**Question**: "How should dependency pins be handled before the venv install?"
+**Question**: "How should the environment be made reproducible (uv lock + committed lockfile)?"
 
 **Options**:
-- **Strip all pins** *(Recommended; default)* — for `requirements.txt`, overwrite with bare package names. For `pyproject.toml`, strip version specifiers from the `dependencies` list (and `[tool.poetry.dependencies]` / `[tool.uv.sources]` where applicable). Pip's resolver picks a consistent set. Simplest. Empirically the most reliable in our case studies.
-- **Narrow-pin** — only re-pin specific packages the maintainer wants locked (e.g. `numpy<2.3`); leave others bare.
-- **Keep as-is** — install with the existing pins. The Skill will surface G2 if the install fails.
+- **Port to uv** *(Recommended; default)* — declare deps in `pyproject.toml`, run `uv lock` once, commit `uv.lock`, and set `env.manager: uv` + `env.lockfile: uv.lock`. Pins are kept and resolved into the lockfile; `uv sync --frozen` is the install path. This is the only option that satisfies the reproducibility contract.
+- **Loosen + re-lock** — the conflict-resolution escape hatch: when `uv lock` reports a conflict, loosen the ONE offending constraint in `pyproject.toml` (e.g. relax `numpy`) and re-run `uv lock`. A sub-case of the uv port, never a strip-all.
+- **Keep as-is** — only valid when a sound `pyproject.toml` + `uv.lock` already exist: keep them and set `env.manager: uv` + `env.lockfile: uv.lock`. A repo with pins but no lockfile is NOT reproducible — it is reported `env: NOT reproducible` (warn-only now, soft-fail exit 1 later), so this is not a benign do-nothing for lockfile-less repos.
 
-**Default**: Strip all pins.
+**Default**: Port to uv (run `uv lock`, commit `uv.lock`).
 
-**Why this isn't "auto-strip silently"**: Phase 2 still asks because the rewrite modifies a tracked file. The maintainer is told once, defaults through, and the rewritten file lands as a commit on the `plutus-verify-v2` branch — fully reversible by branch switch.
+**Why this still asks**: Phase 2 asks because the uv port modifies tracked files — editing `pyproject.toml` deps and adding the committed `uv.lock` (and setting `env.manager` / `env.lockfile` in the manifest). The maintainer is told once, defaults through, and the changes land as a reviewable commit on the `plutus-verify-v2` branch — fully reversible by branch switch.
 
 ---
 
@@ -94,4 +94,4 @@ Five decisions on record. Each is short-lived state used by Phase 3:
 - D2 → `verification_mode` field on the optimization step
 - D3 → whether to add a step or just `nine_step_coverage` entry for paper trading
 - D4 → whether `expected.metrics[].value` and `.plutus/expected/<step>/<path>` chart baselines come from README (path A; copied in Phase 3 step 5b) or smoke-run output (path B; captured by `plutus snapshot` in Phase 4 step 2)
-- D5 → whether `requirements.txt` is rewritten before venv install
+- D5 → how the env is ported to uv (`uv lock` + committed `uv.lock`) and the resulting `env.manager: uv` / `env.lockfile: uv.lock` manifest fields

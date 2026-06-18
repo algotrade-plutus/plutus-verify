@@ -12,7 +12,7 @@ The workflow runs four sequential phases (Survey → Decide → Instrument → V
 ## Pre-flight (before Phase 1)
 
 1. Confirm target repo path. Default to CWD; accept an explicit path argument.
-2. Confirm `plutus_verify` is importable in the target's venv. If missing, install via `pip install plutus-verify` (or symlink the local wheel from this repo's `dist/` if working off-tree).
+2. Confirm `plutus_verify` is importable in the target's venv. If missing, install it — `uv pip install plutus-verify` when the target uses uv (the canonical path; matches the env the dockerfile builds, which installs the SDK via `uv pip install --python /opt/venv/bin/python`), or `pip install plutus-verify` as a host convenience otherwise (or symlink the local wheel from this repo's `dist/` if working off-tree). This is just an importability probe, not the standard install path.
 3. Probe version: `python -c "import plutus_verify; print(plutus_verify.__version__)"`. Load the matching `references/v<minor>.md` and apply its rules to Phases 3-4.
 4. Warn (don't block) if the target repo has uncommitted changes. Phase 3 will branch off `HEAD`, so any in-progress work is preserved on the new branch — but the maintainer should know. Also: a clean working tree is load-bearing for Phase 3 step 5's chart-baseline copy (the v1-committed bytes need to be on disk).
 
@@ -22,13 +22,13 @@ Dispatch parallel `Explore` subagents (single message, multiple `Agent` calls):
 
 - **Pipeline shape**: top-level scripts, their roles, invocation pattern (`if __name__ == "__main__"` blocks)
 - **README claims**: verbatim metric tables, chart references (markdown image links + HTML `<img>` tags), IS/OOS date ranges, risk-free rate assumptions
-- **Dependencies**: probe **`pyproject.toml` first**, then `requirements.txt` as fallback. The skill writes whichever it found into `env.requirements_file`; on 0.2.8+ the framework emits the right `pip install` invocation per file kind (`pip install .` for pyproject.toml, `pip install -r <file>` for requirements.txt). Pin conflicts (G2 in `references/known-gotchas.md`), implicit Python version.
+- **Dependencies & lockfile**: the verifiable standard is `pyproject.toml` + a committed `uv.lock` (the verifier restores it exactly with `uv sync --frozen`). Probe for `pyproject.toml` and a lockfile; record whether the repo is already uv-locked or on a **non-verifiable** packaging (unpinned `pyproject.toml`, or `requirements.txt`) that Phase 3 ports to uv (D5). Flag pin conflicts (G2 in `references/known-gotchas.md`), implicit Python version. (uv env path requires `plutus-verify` 0.4.0+.)
 - **Secrets & env**: `grep -rn 'os.environ\|os.getenv' --include='*.py'`; cross-reference with `.env.example`
 - **Architectural smells**: module-level connections (G1), broken data paths (e.g. missing F2M leg), `.env` placeholders (G3), CSVs vs Drive vs DB sourcing
 
 Synthesize a Survey Report with all five sections. Carry smells forward to Phase 4.5's "architectural smells we worked around" list.
 
-**Exit criteria**: report present in the conversation; pin-conflict flag set if Phase 1 found one (drives D5 below); chart-reference list captured for Phase 3 step 5.
+**Exit criteria**: report present in the conversation; reproducibility / port-to-uv status captured — whether a committed `uv.lock` already sits beside `pyproject.toml` (reproducible) or a deprecated `requirements.txt`/pip env needs porting to uv (drives D5 below); chart-reference list captured for Phase 3 step 5.
 
 ## Phase 2 — Decide
 
@@ -38,7 +38,7 @@ Single `AskUserQuestion` call with the questions from `references/decision-tree.
 - **D2**: optimization verification mode — `artifact_check` / `execute`
 - **D3**: paper-trading inclusion — skip / artifact_check
 - **D4**: README vs script as truth — path A / path B
-- **D5**: requirements.txt fix-up — strip all / narrow / keep as-is. Defaulted to **strip all** because pin conflicts are common in v1-ish repos (Z-Bounce hit this; ProtoMarketMaker hit this). Always asked, regardless of whether Phase 1 detected a conflict — pre-empting the conflict is cheaper than diagnosing it mid-install.
+- **D5**: environment reproducibility — port to uv (`uv lock` + commit `uv.lock`; loosen + re-lock the one offending constraint on a conflict) / keep current packaging (deprecated). Defaulted to **port to uv** so the verifier restores the exact locked env (`uv sync --frozen`); a non-uv / lockfile-less env reports `env: NOT reproducible`. Always asked; full options in `references/decision-tree.md`. Replaces the old strip-pins fix-up: locking once captures a consistent set *and* keeps it reproducible, instead of stripping pins and re-resolving differently every build.
 
 Record the answers as a Decision Block; quote back in Phase 4.5.
 
@@ -55,18 +55,12 @@ Sequential, no further user interaction except the "boundary" cases below.
 
    All subsequent edits in Phases 3-4 land on this branch. The maintainer reviews the final diff before merging to `main`.
 
-2. **Venv install**:
-   - Create venv if missing (`python -m venv .venv`). Hidden dotfile so it stays out of plain `ls` output and aligns with the common `.venv` convention.
-   - **If the repo has `pyproject.toml`** (preferred — Phase 1 already established this):
-     - Apply D5 to the `dependencies` / `[tool.poetry.dependencies]` / `[tool.uv.sources]` block: same options (strip all / narrow / keep as-is). Strip-all on pyproject.toml means removing version specifiers from the dependency list, leaving bare package names.
-     - `pip install .` then `pip install plutus-verify`.
-   - **Else (requirements.txt only)**:
-     - Apply D5 to `requirements.txt`:
-       - **strip all** (default) — overwrite the file with all `==`/`~=`/`>=` pins removed, leaving bare package names. Pip's resolver picks a consistent set. Commit the rewritten file on the branch so the change is visible in the final diff.
-       - **narrow** — only re-pin packages the maintainer named (e.g. `numpy<2.3`); leave others bare.
-       - **keep as-is** — leave the file untouched; install will likely surface **G2** mid-stream.
-     - `pip install -r requirements.txt` then `pip install plutus-verify`.
-   - If install fails despite D5 = strip-all (rare — usually means a transitive needs an OS package), surface **G2** and ask the maintainer for direction.
+2. **Environment — port to uv** (D5 = port to uv, the default; requires `plutus-verify` 0.4.0+):
+   - Ensure dependencies live in `pyproject.toml` (`[project.dependencies]`). If the repo only has `requirements.txt`, import them: `uv init` (only if there's no `pyproject.toml`), then `uv add -r requirements.txt`. Leave the legacy `requirements.txt` on disk for now — the manifest points at the lockfile, not it.
+   - **Lock once and commit**: `uv lock` resolves a consistent set and writes `uv.lock`. Commit `pyproject.toml` + `uv.lock` on the branch so the locked env is reviewable and reversible. The verifier later runs `uv sync --frozen` against exactly this lock.
+   - **On a conflict** (the old G2): `uv lock` fails and names the offending constraint. Loosen that **one** constraint and re-lock — do *not* strip every pin. Surface the loosened constraint in Phase 4.5.
+   - Create the local smoke-run venv: `uv sync` (creates `.venv`), then add the verifier SDK to that venv: `uv pip install plutus-verify` (or symlink the local wheel off-tree). The SDK is verifier-injected, so it stays out of the repo's `pyproject.toml`/lock.
+   - **D5 = keep current packaging** (deprecated escape hatch): skip the uv port; set `env.manager: pip` + `env.requirements_file`. `plutus check` still runs but reports `env: NOT reproducible` (a soft fail in a future release). Use only when uv adoption is blocked.
 3. **Schema probe** — discover allowed values at runtime, don't hardcode:
    ```python
    from plutus_verify.sdk.schema import UNIT_KINDS, ARTIFACT_KINDS
@@ -78,7 +72,7 @@ Sequential, no further user interaction except the "boundary" cases below.
    - `unit="ratio"` (default) for unbounded ratios; `unit="fraction"` for `[0,1]` / `[-1,0]` values (drawdown, returns).
    - Wrap every `r.metric()` value in `float(...)` — see G6.
    - **Never modify existing lines**. Instrumentation is additive only.
-5. **Author `.plutus/manifest.yaml`** from `references/manifest-templates/<tier>.yaml` (selected by D1). Fill all `<PLACEHOLDER>` markers. Set `env.requirements_file` to whatever Phase 1 detected (`pyproject.toml` if present, else `requirements.txt`) — the template ships with `requirements.txt` as a placeholder. **This step has two parallel LLM-extraction sub-steps for D4 = path A:**
+5. **Author `.plutus/manifest.yaml`** from `references/manifest-templates/<tier>.yaml` (selected by D1). Fill all `<PLACEHOLDER>` markers. Set the env per D5: for the uv port (default) `env.manager: uv` + `env.lockfile: uv.lock` (the templates ship this); for keep-current (deprecated) `env.manager: pip` + `env.requirements_file`. **This step has two parallel LLM-extraction sub-steps for D4 = path A:**
 
    a. **Metric values from README.** `expected.metrics[].value` entries come verbatim from the README's reported numbers (the public claim the verifier exists to check). Match metric names by canonical snake_case (Sharpe → `sharpe_ratio`, etc.). For D4 = path B, defer values to Phase 4's smoke-run output.
 
@@ -103,7 +97,7 @@ Sequential, no further user interaction except the "boundary" cases below.
    ```
 
 **Boundary asks** (require user confirmation before applying):
-- Stripping/rewriting `requirements.txt` or the `dependencies` block in `pyproject.toml` (D5).
+- Porting dependencies to uv — writing `pyproject.toml`/`uv.lock` (or importing from `requirements.txt`) and committing the lockfile (D5).
 - Quoting `<placeholder>` values in `.env.example`.
 - Deleting module-level connections (G1 source fix) — **always defer**; surface in Phase 4.5 instead.
 
@@ -199,5 +193,5 @@ If any check fails, do **not** declare done. Diagnose per `references/known-gotc
 ## Interaction model
 
 - Phase 2 is the only interactive phase. Phases 3/4/4.5 run without user interruption unless a hard error appears. Phase 6 always runs but is non-interactive — it either prints a one-line "no divergence" or emits `.plutus/skill-feedback.md` and notifies the user; the user decides whether to act on the file in a follow-up session. The final hand-off invokes `plutus-scoring`, which is also non-interactive.
-- The "modify repo source/config" boundary requires confirmation: requirements.txt edits, .env.example edits, source-level refactors. SDK instrumentation in `__main__` tails is in-scope without per-instance confirmation. The Phase 3 step 5b chart-baseline copy is read-only on the source tree (just copies committed files into `.plutus/expected/`) and is in-scope without confirmation.
+- The "modify repo source/config" boundary requires confirmation: pyproject.toml / uv.lock edits (the uv port), .env.example edits, source-level refactors. SDK instrumentation in `__main__` tails is in-scope without per-instance confirmation. The Phase 3 step 5b chart-baseline copy is read-only on the source tree (just copies committed files into `.plutus/expected/`) and is in-scope without confirmation.
 - Architectural smells are **surfaced, never silently fixed**. The Skill is the bridge between automated transformation and proper repo-side cleanup — it makes the gap visible without forcing the maintainer's hand.

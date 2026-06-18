@@ -33,7 +33,7 @@ delta notes), and warns about uncommitted changes. Then four sequential phases:
 Dispatches parallel read-only `Explore` agents to map five things: the pipeline
 shape (top-level scripts, `__main__` blocks), README claims (verbatim metric
 tables, chart references, IS/OOS date ranges, risk-free-rate assumptions),
-dependencies (pyproject first, requirements as fallback; flags pin conflicts),
+dependencies (`pyproject.toml` + `uv.lock` as the reproducible source; a `requirements.txt` or pin-less `pyproject.toml` is a deprecated fallback to be ported to uv; pin conflicts surface explicitly at `uv lock` time),
 secrets & env (`os.environ`/`os.getenv` greps cross-referenced with
 `.env.example`), and architectural smells (module-level DB connections, broken
 data paths, `.env` placeholders). Produces a Survey Report.
@@ -46,20 +46,26 @@ The *only* interactive phase. A single `AskUserQuestion` poses five decisions:
 - **D2** — optimization verification mode (`artifact_check` default / `execute`).
 - **D3** — paper-trading inclusion (skip default / `artifact_check`).
 - **D4** — source of truth: README claims (default) vs script output.
-- **D5** — dependency pin fix-up (strip all default / narrow / keep) — always
-  asked, because pin conflicts are common.
+- **D5** — env reproducibility (port to uv default / loosen + re-lock / keep) —
+  always asked, because a non-uv / lockfile-less env is now reported as not
+  reproducible (a deprecation, becoming a soft-fail). Port to uv = declare deps
+  in `pyproject.toml`, run `uv lock`, commit `uv.lock`, set `env.manager: uv` +
+  `env.lockfile: uv.lock`.
 
 ### Phase 3 — Instrument & manifest
 
 Non-interactive except for boundary asks. Creates an isolation branch first
-(`git checkout -b plutus-verify-v2`), installs into a venv, probes the schema at
-runtime (never hardcodes `UNIT_KINDS`/`ARTIFACT_KINDS`), **additively**
+(`git checkout -b plutus-verify-v2`), builds the env via `uv sync --frozen`
+against the committed `uv.lock` (installing the SDK with `uv pip install`),
+probes the schema at runtime (never hardcodes `UNIT_KINDS`/`ARTIFACT_KINDS`), **additively**
 instruments metric-emitting scripts (`import plutus_verify as pv`; append
 `with pv.step(...)` at the end of `__main__`; wrap every metric in `float(...)`),
 authors `.plutus/manifest.yaml` from a tier template, captures chart baselines
 *before any execution*, and validates with `load_manifest`. Boundary asks
-(require confirmation): rewriting dependency files, quoting `.env.example`
-placeholders, deleting module-level connections (always deferred to the maintainer).
+(require confirmation): porting deps to uv (editing `pyproject.toml`, running
+`uv lock`, committing `uv.lock`, setting `env.manager` / `env.lockfile`), quoting
+`.env.example` placeholders, deleting module-level connections (always deferred
+to the maintainer).
 
 ### Phase 4 — Verify
 
@@ -90,7 +96,7 @@ modes — **G1–G7, plus G11 and G12** (there is no G8/G9/G10):
 | # | Failure mode | Manifest-side fix |
 |---|--------------|-------------------|
 | **G1** | A transitively-imported module opens a DB connection at *import* time, so even CSV-only steps need the DB. | Set the step `network: bridge` and extend the DB secrets' `used_by`. |
-| **G2** | Dependency file has internally-conflicting pins (e.g. `numpy==2.4` vs a `numba` needing `numpy<2.3`). | Routed through decision D5 (strip-all default); rewritten file is a reviewable commit. |
+| **G2** | Dependency file has internally-conflicting pins (e.g. `numpy==2.4` vs a `numba` needing `numpy<2.3`). | `uv lock` surfaces the conflict explicitly and names the offending constraint; loosen that ONE constraint in `pyproject.toml` and re-run `uv lock` (no silent strip-all). The re-locked `uv.lock` is a reviewable commit. |
 | **G3** | `.env` placeholders like `HOST=<redis_host>` crash `source .env` (angle brackets are shell metacharacters). | Don't source — `eval "$(grep -E '^(K1|K2)=' .env | sed 's/^/export /')"` then `--secrets-from-env`. |
 | **G4** | `visual_similarity` artifacts silently failed pre-0.2.6 when no baseline existed. | Populate `.plutus/expected/` baseline in Phase 3 before execution; 0.2.6+ makes a missing snapshot a non-blocking SKIP. |
 | **G5** | Container stdout/stderr swallowed pre-0.2.6 (FAIL with no diagnostic). | Manual `docker run` repro; 0.2.6 added per-step artifact rendering. |
@@ -113,7 +119,8 @@ Then invoke with `/plutus-transform` or any trigger phrase, pointing at the repo
 ## Limitations & Caveats
 
 - **Targets `plutus-verify` 0.2.7+**; version-specific deltas live in
-  `references/v<minor>.md` and are loaded at pre-flight.
+  `references/v<minor>.md` and are loaded at pre-flight. The uv-locked env path
+  (D5 = port to uv, `env.manager: uv`) requires **0.4.0+**.
 - **Manifest-side fixes only** — the skill deliberately refuses to "fix" a repo
   by loosening tolerances or refactoring source; real source fixes are deferred
   to the maintainer and recorded as smells.

@@ -43,24 +43,21 @@ docker run --rm --network=none \
 
 ## G2 — Internally-conflicting dependency file
 
-**Symptom.**
+**Symptom.** At `uv lock` time, resolution fails and names the offending constraint:
+```
+error: No solution found when resolving dependencies:
+  ... numpy>=2.4 is incompatible with numba<0.60 (needs numpy<2.3)
+```
+Deprecated-fallback case (a pip/requirements.txt env not yet ported to uv):
 ```
 ERROR: Cannot install -r requirements.txt ... conflicting dependencies.
 ```
-or for pyproject.toml:
-```
-ERROR: ResolutionImpossible: ... numpy>=2.4 incompatible with numba<0.60
-```
-or, after `--use-deprecated=legacy-resolver` succeeds:
-```
-ImportError: Numba needs NumPy 2.2 or less. Got NumPy 2.4.
-```
 
-**Diagnosis.** The repo's pins are mutually incompatible (e.g. `numpy==2.4.2` pinned alongside `pandas_ta` whose `numba` transitive needs `numpy<2.3`). Same root cause whether the pins live in `requirements.txt` or in `pyproject.toml`'s `dependencies` / `[tool.poetry.dependencies]` / `[tool.uv.sources]` blocks.
+**Diagnosis.** The repo's pins are mutually incompatible (e.g. `numpy==2.4.2` pinned alongside `pandas_ta` whose `numba` transitive needs `numpy<2.3`). The canonical source resolved by `uv lock` is `pyproject.toml`'s `[project.dependencies]`; a `requirements.txt` is a deprecated fallback to be ported. The root cause is the same wherever the pins live, but the fix centers on `pyproject.toml` + `uv.lock`.
 
-**Fix.** Routed through D5 in [`decision-tree.md`](decision-tree.md), **always asked in Phase 2** with strip-all defaulted. The rewritten file (whichever Phase 1 detected — pyproject.toml preferred, requirements.txt as fallback) lands as a commit on the `plutus-verify-v2` branch so the change is reviewable and reversible.
+**Fix.** `uv lock` surfaces the conflict explicitly and names the offending constraint. Loosen the ONE offending constraint in `pyproject.toml` (e.g. relax `numpy`) and re-run `uv lock` — no silent strip-all. Routed through D5 in [`decision-tree.md`](decision-tree.md) (the "port to uv" default), **always asked in Phase 2**. The regenerated `uv.lock` lands as a commit on the `plutus-verify-v2` branch so the change is reviewable and reversible.
 
-If the install *still* fails after D5 = strip-all (rare — usually means a transitive needs an OS package), surface the failure to the maintainer for direction. Don't silently keep retrying.
+If `uv lock` *still* cannot resolve after loosening the offending constraint (rare — usually a transitive needs an OS package, or a genuinely impossible version graph), surface the failure to the maintainer for direction. Don't silently keep retrying.
 
 ---
 
