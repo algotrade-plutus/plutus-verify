@@ -1,7 +1,7 @@
 ---
 subject: build-and-execute
-date: 2026-06-01
-version: 1.0
+date: 2026-06-18
+version: 1.1
 status: current
 ---
 
@@ -128,6 +128,25 @@ per step:  TemporaryDirectory(staging)
   writes are dropped; it restricts what staging *contains*, not what the
   container can read (the tighter inputs-only-mount is a parking-lot item).
 
+### uv-locked environments restored outside the staging mount (0.4.0)
+- **Context:** the v2 `env` could only re-resolve dependencies at build time
+  (`pip install -r` / `pip install .`), so the verifier might not reproduce the
+  author's exact environment — the core thing it exists to guarantee.
+- **Decision:** `env.manager: uv` + a committed `env.lockfile` makes
+  `dockerfile_gen` install a pinned uv (`_UV_VERSION`) and run
+  `uv sync --frozen --no-install-project`, restoring the locked graph exactly.
+  The venv is created at `UV_PROJECT_ENVIRONMENT=/opt/venv` (PATH-prepended),
+  deliberately **outside `/srv/repo`** — because the per-step staging copy
+  bind-mounts over `/srv/repo` at run time and would shadow an in-project
+  `.venv` (pip's system site-packages survive for the same reason). The SDK
+  installs into that venv via `uv pip install --python` (uv venvs ship no pip).
+- **Rationale:** a restored lockfile closes the dependency-drift hole;
+  `--frozen` fails the build if the lock and `pyproject.toml` disagree (an
+  integrity signal); pinning the uv version keeps the lock format reproducible.
+- **Trade-offs:** `pip` stays the default for back-compat; a non-locked env is
+  reported `env: NOT reproducible` — warn-only now, with `V2RuntimeResult.env_reproducible`
+  as the seam to promote it to a soft fail (exit 1) in a future release.
+
 ## Data Model
 
 - `BuildResult` (`runner.py:28`): `image`, `adjustments` (each a `BuildAdjustment`
@@ -173,12 +192,14 @@ per step:  TemporaryDirectory(staging)
 
 - [repo-verification](../feature/repo-verification.md) — the build/execute stages of the v1 pipeline.
 - [authoring-tools](../feature/authoring-tools.md) — `plutus check` drives the v2 orchestrator + staging.
+- [reproducible-env](../feature/reproducible-env.md) — `env.manager: uv` + lockfile restored by the uv build path.
 
 ## Source Materials
 
 - Reports: `docs/completion-report/2026-05-29-v0.2.10-runtime-mount-staging.md`,
   `docs/completion-report/2026-05-27-v0.2.7-byte-fallback-and-skill-split.md`
 - Code: `plutus_verify/builder/{__init__,dockerfile,fixers,llm_fixer,runner}.py`,
-  `plutus_verify/runner_docker.py`, `plutus_verify/spec/runtime/{staging,orchestrator}.py`,
+  `plutus_verify/runner_docker.py`, `plutus_verify/spec/runtime/{staging,orchestrator,dockerfile_gen}.py`,
   `plutus_verify/util/progress.py`
+- Captures (complete): `docs/capture/reproducible-env-uv/2026-06-18-1618-complete.md` (uv-locked env, 0.4.0)
 </content>
