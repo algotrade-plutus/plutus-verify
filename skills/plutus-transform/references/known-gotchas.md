@@ -82,7 +82,7 @@ eval "$(grep -E '^(KEY1|KEY2|KEY3)=' .env | sed 's/^/export /')"
 plutus check . --secrets-from-env
 ```
 
-`--secrets-from-env` copies `os.environ` into the container, forwarding only keys declared in `manifest.secrets[]`.
+`--secrets-from-env` makes the host environment the *candidate pool*, but only the keys declared in `manifest.secrets[]` are forwarded into a container — each injected only into the steps named in that secret's `used_by`. With `secrets: []`, nothing is injected (host `PATH`/`HOME`/editor vars never reach the container). Fixed in 0.4.2; before that the whole `os.environ` was forwarded to every step, and the injected host `PATH` shadowed the image's `/opt/venv/bin`, breaking uv repos with `ModuleNotFoundError`.
 
 ---
 

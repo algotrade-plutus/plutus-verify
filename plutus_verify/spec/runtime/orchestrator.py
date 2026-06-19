@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from plutus_verify.spec.manifest import Manifest, Step
+from plutus_verify.spec.manifest import RESERVED_SECRET_KEYS, Manifest, Secret, Step
 from plutus_verify.spec.runtime.data_resolver import (
     DataSource,
     DataTierResult,
@@ -169,7 +169,7 @@ def run_v2_pipeline(
             image=image,
             repo_path=repo_path,
             runner=runner,
-            secrets=secrets,
+            secrets=_resolve_step_secrets(manifest.secrets, secrets, step.id),
             satisfied=tier.satisfied,
         )
         result.step_results[step.id] = sr
@@ -202,6 +202,35 @@ def _topo_sort(steps: tuple[Step, ...]) -> list[Step]:
     for s in steps:
         visit(s.id)
     return out
+
+
+def _resolve_step_secrets(
+    declared: tuple[Secret, ...], pool: dict[str, str], step_id: str
+) -> dict[str, str]:
+    """Select the env vars to inject into one step's container.
+
+    ``pool`` is the candidate environment — the entire host ``os.environ`` when
+    ``plutus check --secrets-from-env`` is used. We inject ONLY the manifest's
+    declared secret ``key``s, and only into the steps named in each secret's
+    ``used_by`` (mirroring the v1 path's ``needs_secrets`` filter in
+    ``execute.py``, and the contract in ``scaffold/manifest_template_todo.py``:
+    "propagates only the declared keys ... undeclared keys are NOT propagated").
+
+    Forwarding the whole pool is both a leak (the maintainer's host env
+    contaminates the "reproducible" container, so two machines differ) and a
+    correctness hazard: a host ``PATH`` injected via ``-e`` overrides the image's
+    ``ENV PATH=/opt/venv/bin:$PATH`` and hides the uv venv. With ``secrets: []``,
+    nothing is injected. Keys in ``RESERVED_SECRET_KEYS`` (PATH, HOME, …) are
+    dropped even if declared — defense-in-depth against re-opening that exact
+    channel; the validator also rejects them at check-time.
+    """
+    return {
+        s.key: pool[s.key]
+        for s in declared
+        if step_id in s.used_by
+        and s.key in pool
+        and s.key not in RESERVED_SECRET_KEYS
+    }
 
 
 def _run_step(

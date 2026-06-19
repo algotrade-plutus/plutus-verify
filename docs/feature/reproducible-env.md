@@ -1,7 +1,7 @@
 ---
 feature: reproducible-env
-date: 2026-06-18
-version: 1.0
+date: 2026-06-19
+version: 1.1
 status: current
 ---
 
@@ -62,10 +62,12 @@ Generate the lock once and commit it alongside `pyproject.toml`:
 ```bash
 uv lock
 git add pyproject.toml uv.lock
-plutus check . --secrets-from-env   # builds via `uv sync --frozen`
+plutus check .          # builds via `uv sync --frozen`; no secrets → no flag
 ```
 
-`plutus init` scaffolds this uv block by default.
+`plutus init` scaffolds this uv block by default. A no-secrets repo does **not**
+need `--secrets-from-env` — add it only when the manifest declares `secrets[]`
+(see the secrets caveat below).
 
 ### Deprecated pip fallback
 
@@ -84,7 +86,15 @@ env:
 - **`pip` is the back-compat default and is deprecated.** A `pip`/lockfile-less env
   is reported `env: NOT reproducible`. This is **warn-only today** (exit code
   unchanged) and is slated to become a soft fail (exit 1) in a future release.
-- **Requires `plutus-verify` 0.4.0+** for the uv path.
+- **Requires `plutus-verify` 0.4.2+ in practice.** The uv path landed in 0.4.0, but
+  uv steps only *execute* correctly from **0.4.1** (the runner used a login shell that
+  reset `PATH` and hid the venv) and `--secrets-from-env` only injects safely from
+  **0.4.2** (earlier it forwarded the whole host env, whose `PATH` re-hid the venv).
+- **`--secrets-from-env` forwards only declared secrets.** It injects only the
+  manifest's `secrets[]` keys, each scoped to the steps in its `used_by`; undeclared
+  host vars (including `PATH`/`HOME`) never reach the container. A secret key may not
+  be a reserved runtime var (`PATH`, `HOME`, `LD_LIBRARY_PATH`, …) — the validator
+  rejects it. With `secrets: []`, the flag injects nothing.
 - **The verifier pins one blessed uv version** (so the lock format itself is
   reproducible); a repo locked with a wildly different uv may need a re-lock.
 - **Exact versions ≠ bit-identical floats.** A locked graph removes version drift —
@@ -98,5 +108,8 @@ env:
 
 ## Source Materials
 
-- Captures: [reproducible-env-uv (complete)](../capture/reproducible-env-uv/2026-06-18-1618-complete.md)
-- Design: [build-and-execute](../design/build-and-execute.md) — the uv build path and why the venv lives outside the staging mount.
+- Captures: [reproducible-env-uv (complete, 0.4.0)](../archive/journal/2026-06-18/capture/reproducible-env-uv/2026-06-18-1618-complete.md);
+  bug-fixes [login-shell PATH (0.4.1)](../capture/reproducible-env-uv/2026-06-18-1719-bug-fix.md),
+  [`--secrets-from-env` host-env leak (0.4.2)](../capture/reproducible-env-uv/2026-06-19-1016-bug-fix.md)
+- Design: [build-and-execute](../design/build-and-execute.md) — the uv build path and why the venv lives outside the staging mount;
+  [secret-and-leak-hardening](../design/secret-and-leak-hardening.md) — per-step declared-secret resolution.

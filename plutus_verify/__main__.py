@@ -364,7 +364,15 @@ def init_cmd(repo_path: Path, force: bool) -> None:
 
 @cli.command("check")
 @click.argument("repo_path", type=click.Path(path_type=Path, file_okay=False), default=".")
-@click.option("--secrets-from-env", is_flag=True, help="use environment variables as secrets")
+@click.option(
+    "--secrets-from-env",
+    is_flag=True,
+    help=(
+        "resolve the manifest's declared secrets[] from the host environment and "
+        "inject them per-step (only declared keys reach the container; undeclared "
+        "host vars are never forwarded)"
+    ),
+)
 @click.option(
     "--data-tier",
     type=click.Choice(["processed", "raw", "code", "auto"]),
@@ -409,6 +417,11 @@ def check_cmd(
     try:
         from plutus_verify.runner_docker import DockerRunner
 
+        # Candidate POOL only — the v2 orchestrator filters this down to the
+        # manifest's declared secret keys, scoped per step by used_by (see
+        # orchestrator._resolve_step_secrets). Do NOT hand this dict to the runner
+        # directly: that would inject the whole host env (incl. PATH) and shadow
+        # the image's /opt/venv/bin.
         secrets = dict(os.environ) if secrets_from_env else {}
         click.echo(f"building image from .plutus/Dockerfile.generated...")
         res = scaffold_check(

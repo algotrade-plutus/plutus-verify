@@ -12,7 +12,7 @@ JSON-Schema validates structure; this module enforces relationships:
 """
 from __future__ import annotations
 
-from plutus_verify.spec.manifest import Manifest
+from plutus_verify.spec.manifest import RESERVED_SECRET_KEYS, Manifest
 
 
 class ManifestInvariantError(ValueError):
@@ -69,6 +69,12 @@ def check_invariants(m: Manifest) -> None:
                     )
 
     for sec in m.secrets:
+        if sec.key in RESERVED_SECRET_KEYS:
+            raise ManifestInvariantError(
+                f"secret key '{sec.key}' is reserved — it governs the container "
+                f"runtime (e.g. PATH selects the interpreter) and injecting it "
+                f"would shadow the image's environment. Rename the secret."
+            )
         for step_id in sec.used_by:
             # Allow data-source qualifiers like "data_sources.processed.s3"
             if step_id.startswith("data_sources."):

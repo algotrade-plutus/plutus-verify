@@ -1,7 +1,7 @@
 ---
 subject: build-and-execute
-date: 2026-06-18
-version: 1.1
+date: 2026-06-19
+version: 1.2
 status: current
 ---
 
@@ -70,7 +70,12 @@ per step:  TemporaryDirectory(staging)
   `ENV PATH` verbatim — a login shell re-sources `/etc/profile` on the Debian
   slim base and resets `PATH`, which would hide the uv venv at `/opt/venv/bin`
   (0.4.1). Secrets are injected at runtime via `-e`, never baked into the image.
-  On timeout → `ExecResult(exit_code=-1, outcome=TIMEOUT)`.
+  The `env` dict the runner receives is scoped per step by
+  `orchestrator._resolve_step_secrets` to the manifest's declared `secrets[]`
+  (filtered by `used_by`); 0.4.2 closed a path where `--secrets-from-env`
+  forwarded the whole host `os.environ` and an injected `-e PATH` shadowed
+  `/opt/venv/bin` the same way `bash -lc` did. On timeout →
+  `ExecResult(exit_code=-1, outcome=TIMEOUT)`.
 
 #### Staging — `plutus_verify/spec/runtime/staging.py`
 - `populate_staging(cwd, staging, step)` (`:29`) copies cwd into a per-step

@@ -75,8 +75,9 @@ secrets:
 ```
 
 **Common pitfall:** Forgetting `used_by`. A secret with no `used_by` is
-declared-but-unused; the schema validator emits a warning. Always list
-the step IDs that actually need the secret.
+declared-but-unused — it is injected into no step (each secret reaches only the
+steps named in its `used_by`). Always list the step IDs that actually need the
+secret, or the step will fail for a missing env var.
 
 ---
 

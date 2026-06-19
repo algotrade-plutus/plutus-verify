@@ -4,6 +4,31 @@ All notable changes to `plutus-verify` are recorded here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 project is pre-1.0 and uses calendar-driven minor bumps.
 
+## [0.4.2] — 2026-06-19
+
+Fixes a host-environment leak in `--secrets-from-env` that also re-broke uv repos.
+
+### Fixed — `--secrets-from-env` forwarded the entire host environment
+
+- `plutus check --secrets-from-env` set `secrets = dict(os.environ)` and the v2
+  orchestrator injected that **whole** dict into every step as docker `-e KEY=VALUE`.
+  Among ~50 host vars it injected `-e PATH=<host>`, which overrode the image's
+  `ENV PATH=/opt/venv/bin:$PATH` and hid the uv venv → every step failed with
+  `ModuleNotFoundError`, even for a manifest declaring `secrets: []`. It was also a
+  reproducibility/leak smell: the maintainer's host env (PATH, HOME, editor/agent
+  vars) contaminated the "reproducible" container.
+- Now only the manifest's **declared** secret keys are resolved from the host env
+  and injected, scoped to each secret's `used_by`
+  (`orchestrator._resolve_step_secrets`) — matching the v1 path and the documented
+  contract. With `secrets: []`, nothing is injected.
+- A reserved-key denylist (`PATH`, `HOME`, `LD_LIBRARY_PATH`, `PYTHONPATH`,
+  `VIRTUAL_ENV`, `UV_PROJECT_ENVIRONMENT`) is rejected by the validator at
+  check-time and dropped by the resolver, so a secret named `PATH` can't re-open
+  the channel.
+- **Behavior note:** undeclared host env vars are no longer injected. A repo that
+  leaned on the old leak must declare the vars it needs under `secrets[]` with
+  `used_by`. Added `tests/unit/test_orchestrator_secrets.py`.
+
 ## [0.4.1] — 2026-06-18
 
 Fixes the uv-locked env path so steps can actually run.

@@ -1,7 +1,7 @@
 ---
 subject: secret-and-leak-hardening
-date: 2026-06-01
-version: 1.0
+date: 2026-06-19
+version: 1.1
 status: current
 ---
 
@@ -165,6 +165,25 @@ reasonable parking point.
 | 0.2.8 | `pyproject.toml` first-class as a dependency spec |
 | 0.2.9 | Auto-emit conservative `.dockerignore`; closes the image-layer secret leak |
 | 0.2.10 | Per-step staging dir; closes the runtime-mount `.env` leak + cache short-circuit; manifest secret routing genuinely authoritative (518 tests passing) |
+| 0.4.2 | `--secrets-from-env` now resolves **only** the manifest's declared secret keys, scoped per secret `used_by`; previously it forwarded the whole host `os.environ` (incl. `PATH`) to every container — a fourth leak channel that contaminated the "reproducible" env and shadowed the uv venv. See "Per-step declared-secret resolution" below. |
+
+### Per-step declared-secret resolution (0.4.2)
+
+A fourth leak channel, distinct from the three mount/build-context channels above:
+`plutus check --secrets-from-env` set `secrets = dict(os.environ)` and the v2
+orchestrator forwarded that whole dict to **every** step as docker `-e KEY=VALUE`.
+That both contaminated the container with the maintainer's host env (PATH, HOME,
+editor/agent vars — so two machines produced different "reproducible" runs) and
+re-broke uv repos: the injected `-e PATH=<host>` overrode the image's
+`ENV PATH=/opt/venv/bin:$PATH`, hiding the venv (same symptom as the 0.4.1
+login-shell bug). The fix is the pure helper
+`orchestrator._resolve_step_secrets(declared, pool, step_id)`, which keeps only
+declared secret keys whose `used_by` names the step — mirroring the v1 path's
+`{k: secrets[k] for k in alt.needs_secrets if k in secrets}` (`execute.py`). The
+incoming dict is now a *candidate pool*; with `secrets: []` nothing is injected.
+A reserved-key denylist (`RESERVED_SECRET_KEYS` in `spec/manifest.py`: `PATH`,
+`HOME`, `LD_LIBRARY_PATH`, …) is rejected by the validator and dropped by the
+resolver, so a secret literally named `PATH` can't re-open the channel.
 
 ## Future Considerations (parking lot)
 

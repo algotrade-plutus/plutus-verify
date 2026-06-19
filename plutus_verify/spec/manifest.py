@@ -40,6 +40,16 @@ class Secret:
     used_by: tuple[str, ...] = ()
 
 
+# Env vars that govern the container's runtime and must never be set from a
+# declared secret: injecting e.g. `-e PATH=<host>` overrides the image's
+# `ENV PATH=/opt/venv/bin:$PATH` and hides the uv venv (the same failure mode as
+# the 0.4.1/0.4.2 bugs). The validator rejects a secret with one of these keys;
+# the orchestrator's resolver also drops them defensively.
+RESERVED_SECRET_KEYS = frozenset(
+    {"PATH", "HOME", "LD_LIBRARY_PATH", "PYTHONPATH", "VIRTUAL_ENV", "UV_PROJECT_ENVIRONMENT"}
+)
+
+
 @dataclass(frozen=True)
 class DataSource:
     kind: str
