@@ -4,6 +4,29 @@ All notable changes to `plutus-verify` are recorded here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 project is pre-1.0 and uses calendar-driven minor bumps.
 
+## [0.4.3] — 2026-06-19
+
+Makes the wheel-based SDK install ergonomic — a plain wheel now works, and the
+failure message is actionable. No PyPI required.
+
+### Added — stage the SDK from a plain installed wheel (resolution strategy 4)
+
+- `ensure_plutus_wheel` now has a last-resort strategy: when there is no vendored
+  `_bundled/` wheel (i.e. not a release wheel) **and** no source tree on disk
+  (non-editable install), it reconstructs a wheel by re-zipping the installed
+  package files + `.dist-info` (skipping installer-generated scripts and `.pyc`).
+  A plain `uv build` / `python -m build` wheel installed non-editably now builds
+  images fine — no editable checkout, no PyPI. Verified end-to-end (plain wheel →
+  re-pack → reinstall + import + console script).
+
+### Changed — actionable `SdkBundleError`
+
+- The bundling error no longer claims "editable install or a PyPI release (not yet
+  supported)". It names the three working install strategies — release wheel
+  (`uv pip install` / `uv tool install`), editable checkout, or (automatic) re-pack
+  — and only surfaces when even re-pack can't run (e.g. no `RECORD`). README gains
+  an "Installing into a strategy repo" section.
+
 ## [0.4.2] — 2026-06-19
 
 Fixes a host-environment leak in `--secrets-from-env` that also re-broke uv repos.

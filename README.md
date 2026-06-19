@@ -42,6 +42,27 @@ Optional extras:
 
 Runtime tools: `git` and `docker` must be on `PATH`.
 
+### Installing into a strategy repo (no PyPI needed)
+
+A strategy repo's step scripts `import plutus_verify`, but the SDK is **never** a
+project dependency — `plutus check` stages a wheel into the Docker image at build
+time. To run those scripts (or `check`/`snapshot`) locally, install plutus-verify
+one of two ways — **PyPI is not required**:
+
+- **Release wheel (recommended):** `uv pip install <release-wheel>` /
+  `uv tool install <release-wheel>`. The wheel from `scripts/release-build.sh`
+  **self-bundles** a copy of itself at `plutus_verify/_bundled/`, so the install
+  method (wheel / `uv tool` / editable) doesn't matter — only that `_bundled/`
+  contains the `.whl`.
+- **Editable checkout:** `pip install -e .` (as above).
+
+A **plain** `uv build` / `python -m build` wheel is **not** self-bundling (its
+`_bundled/` holds only `__init__.py`), but `check` still stages the SDK from it by
+re-packing the installed files — so a plain wheel works too. The **release** wheel
+is preferred (self-bundling, no re-pack step). `check` only errors — with an
+actionable `SdkBundleError` — if the install has no usable files at all (e.g. no
+`RECORD` manifest).
+
 ## Quick start
 
 ```bash

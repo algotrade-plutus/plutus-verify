@@ -19,9 +19,12 @@ Resolution order (first success wins):
    dev installs. Production path; no on-demand build.
 2. **PEP 610 ``direct_url.json``** -- editable wheel-format installs.
 3. **Egg-info-adjacent source tree** -- legacy editable installs.
+4. **Re-pack the installed files** -- last resort for a plain (non-self-bundling,
+   non-editable) wheel install: re-zip the recorded package tree + ``.dist-info``
+   into a fresh wheel. No source, no PyPI.
 
-(2) and (3) build a wheel on demand via ``python -m build``. (1) just
-copies the prebuilt wheel into the build context.
+(2) and (3) build a wheel on demand via ``python -m build``. (1) just copies the
+prebuilt wheel into the build context. (4) re-zips the installed files in place.
 """
 from __future__ import annotations
 
@@ -30,6 +33,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import zipfile
 from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
 from typing import Optional
@@ -42,6 +46,23 @@ class SdkBundleError(RuntimeError):
 
 _PACKAGE = "plutus-verify"
 _WHEEL_PREFIX = "plutus_verify"
+
+# Shown when the SDK can't be staged into the image because the install is a
+# plain (non-self-bundling) wheel and isn't editable. Names the three working
+# resolution strategies in priority order so the message is actionable — a
+# *release* wheel installed non-editably works fine (it self-bundles), which the
+# old "editable install or a PyPI release" wording wrongly implied it didn't.
+_NON_SELF_BUNDLING_HINT = (
+    f"To stage the SDK into the image, install {_PACKAGE} as either:\n"
+    f"  - a RELEASE wheel (self-bundling), e.g. `uv pip install <release-wheel>` "
+    f"or `uv tool install <release-wheel>` (built by scripts/release-build.sh); or\n"
+    f"  - an editable checkout: `pip install -e .` / `uv pip install -e .`.\n"
+    f"The verifier resolves the SDK in order: vendored plutus_verify/_bundled/ "
+    f"wheel (RELEASE wheel only) -> editable source build -> re-pack of the "
+    f"installed files. A plain `uv build` / `python -m build` wheel normally works "
+    f"via re-pack; this error means even that failed (e.g. the install has no "
+    f"RECORD manifest)."
+)
 
 
 def _vendored_wheel() -> Optional[Path]:
@@ -128,12 +149,70 @@ def ensure_plutus_wheel(build_context_dir: Path) -> Path:
         shutil.copy2(vendored, expected_wheel)
         return expected_wheel
 
-    # Strategies 2 + 3: locate source on disk and build a wheel.
-    source_dir = _locate_source(dist)
-    tmp_wheel = _build_wheel_from_source(source_dir)
+    # Strategies 2 + 3: locate an editable source on disk and build a fresh wheel.
+    try:
+        source_dir = _locate_source(dist)
+    except SdkBundleError:
+        # Strategy 4 (last resort): no vendored wheel and no source — re-pack the
+        # installed package files into a wheel. Makes a plain (non-self-bundling)
+        # wheel install work with no PyPI and no source checkout. Re-raises the
+        # actionable source error if even re-packing can't run.
+        tmp_wheel = _repack_installed_wheel(dist)
+    else:
+        tmp_wheel = _build_wheel_from_source(source_dir)
 
     shutil.copy2(tmp_wheel, expected_wheel)
     return expected_wheel
+
+
+def _repack_installed_wheel(dist) -> Path:
+    """Reconstruct a wheel from the files of an already-installed plutus-verify.
+
+    Strategy 4 — the last resort when there is no vendored wheel (plain, not a
+    release wheel) and no source tree on disk (non-editable). Re-zips the recorded
+    package tree and its ``.dist-info`` into a fresh ``.whl`` so the image still
+    gets a valid, installable SDK. No network, no PyPI, no ``python -m build``.
+
+    The re-packed wheel needs no populated ``_bundled/`` — it's only staged into
+    the image and ``pip install``ed there; the image doesn't bundle further.
+
+    Installer-generated entries (console scripts that escape site-packages, e.g.
+    ``../../bin/plutus``) and byte-compiled ``.pyc`` / ``__pycache__`` are skipped:
+    a wheel ships neither.
+    """
+    files = getattr(dist, "files", None)
+    if not files:
+        raise SdkBundleError(
+            f"cannot re-pack the installed {_PACKAGE}: no file manifest (RECORD) "
+            f"is available for the install.\n\n{_NON_SELF_BUNDLING_HINT}"
+        )
+
+    dist_info = f"{_WHEEL_PREFIX}-{dist.version}.dist-info"
+    tmp = Path(tempfile.mkdtemp(prefix="plutus-sdk-repack-"))
+    wheel_path = tmp / f"{_WHEEL_PREFIX}-{dist.version}-py3-none-any.whl"
+
+    written = 0
+    with zipfile.ZipFile(wheel_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for entry in files:
+            posix = entry.as_posix()
+            top = posix.split("/", 1)[0]
+            # Only the package tree and its dist-info belong in a wheel.
+            if top not in (_WHEEL_PREFIX, dist_info):
+                continue
+            if posix.endswith(".pyc") or "__pycache__" in posix:
+                continue
+            src = Path(dist.locate_file(entry))
+            if not src.is_file():
+                continue
+            zf.write(src, posix)
+            written += 1
+
+    if written == 0:
+        raise SdkBundleError(
+            f"cannot re-pack the installed {_PACKAGE}: no package files found on "
+            f"disk.\n\n{_NON_SELF_BUNDLING_HINT}"
+        )
+    return wheel_path
 
 
 def _locate_source(dist) -> Path:
@@ -160,10 +239,7 @@ def _locate_source(dist) -> Path:
                 f"{_PACKAGE} direct_url points at {source_dir} but no "
                 "pyproject.toml found there"
             )
-        raise SdkBundleError(
-            f"{_PACKAGE} is installed non-editably; SDK bundling requires an "
-            "editable install or a PyPI release (not yet supported here)"
-        )
+        raise SdkBundleError(_NON_SELF_BUNDLING_HINT)
 
     # Fallback for editable installs that didn't produce direct_url.json
     # (e.g. setuptools' default .egg-info layout): locate the source via the
@@ -177,8 +253,9 @@ def _locate_source(dist) -> Path:
         return candidate
 
     raise SdkBundleError(
-        f"could not locate {_PACKAGE} source on disk: no PEP 610 "
-        "direct_url.json and no pyproject.toml next to plutus_verify package"
+        f"could not locate a {_PACKAGE} SDK to bundle (no PEP 610 "
+        f"direct_url.json and no pyproject.toml next to the plutus_verify "
+        f"package).\n\n{_NON_SELF_BUNDLING_HINT}"
     )
 
 
