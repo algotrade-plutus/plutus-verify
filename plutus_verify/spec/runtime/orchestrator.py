@@ -6,6 +6,7 @@ No adapter to v1 plumbing. Mirrors the v1 pipeline shape but consumes
 """
 from __future__ import annotations
 
+import shutil
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -25,7 +26,9 @@ from plutus_verify.spec.runtime.sdk_bundle import (
 )
 from plutus_verify.spec.runtime.staging import (
     extract_outputs,
+    harvest_committed_outputs,
     populate_staging,
+    stage_prior_results,
 )
 from plutus_verify.spec.runtime.preflight import (
     PreflightError,
@@ -249,18 +252,18 @@ def _run_step(
             duration_seconds=0.0,
             skipped_reason="satisfied_by_data_source",
         )
-    try:
-        assert_inputs_present(step, repo_path)
-    except PreflightError as exc:
-        return StepRuntimeResult(
-            step_id=step.id,
-            exit_code=-1,
-            duration_seconds=0.0,
-            preflight_error=str(exc),
-        )
+
+    # Per-step results buffer (L2): produced outputs land here, never the
+    # working tree. Clear it so a stale prior-run harvest can't masquerade as
+    # this run's output (mirrors scaffold_check's .plutus/run wipe for direct
+    # run_v2_pipeline callers that don't go through the CLI wipe).
+    results_dir = repo_path / ".plutus" / "results" / step.id
+    if results_dir.exists():
+        shutil.rmtree(results_dir, ignore_errors=True)
+
     if step.verification_mode == "artifact_check":
-        # Don't execute — just verify the declared outputs exist (e.g., a
-        # shipped optimized_parameter.json).
+        # Don't execute — just verify the declared (committed) outputs exist
+        # (e.g., a shipped optimized_parameter.json).
         sr = StepRuntimeResult(
             step_id=step.id,
             exit_code=0,
@@ -268,10 +271,14 @@ def _run_step(
             skipped_reason="artifact_check (no execution; outputs verified by preflight)",
         )
         try:
+            assert_inputs_present(step, repo_path)
             assert_outputs_present(step, repo_path)
         except PreflightError as exc:
             sr.preflight_error = str(exc)
             sr.exit_code = -1
+            return sr
+        # Mirror the committed outputs into the buffer for a uniform compare.
+        harvest_committed_outputs(repo_path, step)
         return sr
 
     if not step.command:
@@ -285,6 +292,21 @@ def _run_step(
     with tempfile.TemporaryDirectory(prefix=f"plutus-stage-{step.id}-") as staging_str:
         staging = Path(staging_str)
         populate_staging(repo_path, staging, step)
+        # Inter-step bus: earlier steps' produced outputs (now in
+        # .plutus/results/) are injected at their declared paths so this step
+        # sees them even when the intermediate isn't committed (Decision 1).
+        stage_prior_results(repo_path, staging, step)
+        # Verify inputs against the actual sandbox the container will run on
+        # (committed inputs + injected intermediates), not the working tree.
+        try:
+            assert_inputs_present(step, staging)
+        except PreflightError as exc:
+            return StepRuntimeResult(
+                step_id=step.id,
+                exit_code=-1,
+                duration_seconds=0.0,
+                preflight_error=str(exc),
+            )
         exec_result = runner.run(
             image=image,
             command=step.command,
@@ -302,8 +324,9 @@ def _run_step(
         stderr=getattr(exec_result, "stderr", ""),
     )
     if sr.exit_code == 0:
+        # The step produced its outputs into the results buffer; verify there.
         try:
-            assert_outputs_present(step, repo_path)
+            assert_outputs_present(step, results_dir)
         except PreflightError as exc:
             sr.preflight_error = str(exc)
     return sr
@@ -396,9 +419,13 @@ def _within_tolerance(actual: Any, expected: Any, tol) -> tuple[bool, str]:
 
 def _compare_artifacts(er, repo_path: Path, expected_root: Path, vision_client) -> list[CompareResult]:
     out: list[CompareResult] = []
+    results_root = repo_path / ".plutus" / "results"
     for r in er.artifacts:
         expected_path = expected_root / er.step_id / r.path
-        produced_path = repo_path / r.path
+        # Produced bytes were harvested to the per-step results buffer (L2),
+        # never the working tree — so `check` compares fresh output, not a
+        # possibly-stale committed file.
+        produced_path = results_root / er.step_id / r.path
         out.append(
             compare_artifact(
                 r,

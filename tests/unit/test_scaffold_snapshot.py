@@ -113,10 +113,21 @@ def test_snapshot_skips_missing_outputs_with_warning(tmp_path: Path):
     assert any("missing" in n.lower() for n in res.notes)
 
 
-def test_snapshot_with_run_runs_check_first(tmp_path: Path):
+def test_snapshot_with_run_blesses_from_results_buffer_and_writes_result(tmp_path: Path):
+    """L1+L2: snapshot runs in-container, harvests produced outputs to
+    .plutus/results/, then blesses from there into both .plutus/expected/
+    (groundtruth) and the working tree (human-facing result/)."""
     _stage_repo(tmp_path)
+
+    def fake_run(**kwargs):
+        # Simulate the in_sample container producing its declared output.
+        c = Path(kwargs["cwd"])
+        (c / "out").mkdir(parents=True, exist_ok=True)
+        (c / "out" / "metrics.json").write_text('{"sharpe": 1.23}')
+        return MagicMock(exit_code=0, stdout="", stderr="", duration_seconds=0.1)
+
     runner = MagicMock()
-    runner.run.return_value = MagicMock(exit_code=0, stdout="", stderr="", duration_seconds=0.1)
+    runner.run.side_effect = fake_run
     res = scaffold_snapshot(
         tmp_path,
         run_check_first=True,
@@ -125,9 +136,15 @@ def test_snapshot_with_run_runs_check_first(tmp_path: Path):
         vision_client=None,
         secrets={},
     )
-    # check ran (image_builder called); snapshot copied
+    # check ran (image_builder called); snapshot copied from the results buffer
     assert res.check_result is not None
     assert res.files_copied >= 1
+    # groundtruth blessed under .plutus/expected/<step>/
+    assert (
+        tmp_path / ".plutus" / "expected" / "in_sample" / "out" / "metrics.json"
+    ).read_text() == '{"sharpe": 1.23}'
+    # human-facing copy written into the working tree (result/ = declared path)
+    assert (tmp_path / "out" / "metrics.json").read_text() == '{"sharpe": 1.23}'
 
 
 def test_snapshot_with_run_aborts_on_check_failure(tmp_path: Path):

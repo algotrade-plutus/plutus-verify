@@ -34,6 +34,12 @@ def scaffold_check(
     run_dir = repo_path / ".plutus" / "run"
     if run_dir.exists():
         shutil.rmtree(run_dir, ignore_errors=True)
+    # Same guard for the per-run artifact harvest buffer (L2): clear the whole
+    # tree so orphaned step buffers (from renamed/removed steps) can't linger
+    # and a stale artifact can never be compared or blessed.
+    results_dir = repo_path / ".plutus" / "results"
+    if results_dir.exists():
+        shutil.rmtree(results_dir, ignore_errors=True)
 
     manifest = load_manifest(repo_path)
     runtime = run_v2_pipeline(

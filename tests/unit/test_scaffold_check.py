@@ -62,8 +62,15 @@ def test_check_exit_code_zero_when_all_pass(tmp_path: Path):
     runner = MagicMock()
 
     def fake_run(**kwargs):
-        # When the in_sample script runs, simulate it writing results.json
-        # the same way an instrumented script with `pv.step` would.
+        # Simulate a real container: write the steps' declared outputs into the
+        # staging cwd so the orchestrator can harvest them to .plutus/results/.
+        c = Path(kwargs["cwd"])
+        (c / "data" / "processed").mkdir(parents=True, exist_ok=True)
+        (c / "data" / "processed" / "x.parquet").write_text("ok")
+        (c / "out").mkdir(parents=True, exist_ok=True)
+        (c / "out" / "metrics.json").write_text('{"sharpe": 0.0}')
+        # When the in_sample script runs, also write results.json the same way
+        # an instrumented script with `pv.step` would.
         if "TODO_python_module_to_backtest" in kwargs.get("command", "") or "in_sample" in kwargs.get("command", ""):
             with pv_step("in_sample", repo_path=tmp_path) as r:
                 r.metric("sharpe_ratio", 0.0, unit="ratio")
@@ -124,6 +131,34 @@ def test_check_wipes_stale_run_dir_before_pipeline(tmp_path: Path):
     assert "step 'in_sample' failed" in hr.detail
 
 
+def test_check_wipes_stale_results_buffer_before_pipeline(tmp_path: Path):
+    """A stale .plutus/results/<step>/ artifact from a previous run must be
+    wiped before this run, so the compare phase reads only what THIS run
+    produced (symmetric to the .plutus/run/ wipe)."""
+    scaffold_init(tmp_path)
+    (tmp_path / "out").mkdir(exist_ok=True)
+    (tmp_path / "out" / "metrics.json").write_text('{"sharpe": 0.0}')
+    (tmp_path / "data" / "raw").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "data" / "processed").mkdir(parents=True, exist_ok=True)
+
+    stale = tmp_path / ".plutus" / "results" / "in_sample" / "out" / "metrics.json"
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.write_text('{"sharpe": 999}')
+
+    runner = MagicMock()
+    runner.run.return_value = MagicMock(
+        exit_code=0, stdout="", stderr="", duration_seconds=0.1
+    )
+    scaffold_check(
+        tmp_path,
+        image_builder=MagicMock(return_value="img"),
+        runner=runner,
+        vision_client=None,
+        secrets={},
+    )
+    assert not stale.exists(), "stale .plutus/results/ should have been wiped"
+
+
 def test_check_exit_code_one_when_metric_missing(tmp_path: Path):
     """All required steps exit 0 but the SDK never wrote results.json — the
     metric comparison fails, surfacing a soft-fail (exit code 1)."""
@@ -134,7 +169,18 @@ def test_check_exit_code_one_when_metric_missing(tmp_path: Path):
     (tmp_path / "data" / "processed").mkdir(parents=True, exist_ok=True)
 
     runner = MagicMock()
-    runner.run.return_value = MagicMock(exit_code=0, stdout="", stderr="", duration_seconds=0.1)
+
+    def fake_run(**kwargs):
+        # Steps produce their declared outputs (so they pass the output check),
+        # but the SDK never writes results.json — the metric comparison fails.
+        c = Path(kwargs["cwd"])
+        (c / "data" / "processed").mkdir(parents=True, exist_ok=True)
+        (c / "data" / "processed" / "x.parquet").write_text("ok")
+        (c / "out").mkdir(parents=True, exist_ok=True)
+        (c / "out" / "metrics.json").write_text('{"sharpe": 0.0}')
+        return MagicMock(exit_code=0, stdout="", stderr="", duration_seconds=0.1)
+
+    runner.run.side_effect = fake_run
     res = scaffold_check(
         tmp_path,
         image_builder=MagicMock(return_value="img"),

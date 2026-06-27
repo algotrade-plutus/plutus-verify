@@ -20,17 +20,36 @@ def test_v2_runtime_end_to_end(tmp_path):
     work = tmp_path / "repo"
     shutil.copytree(_FIXTURE, work)
 
-    # Pre-stage all outputs declared by steps (since we stub the runner)
+    # Pre-stage committed inputs: the raw layout makes data_preparation
+    # "satisfied" (data_tier_used == "raw"); data/processed is a committed
+    # input for in_sample. Produced outputs now come from the runner, harvested
+    # into .plutus/results/, not from these files.
     (work / "data" / "raw").mkdir(parents=True, exist_ok=True)
     (work / "data" / "raw" / "x.parquet").write_text("ok")
     (work / "data" / "processed").mkdir(parents=True, exist_ok=True)
     (work / "data" / "processed" / "x.parquet").write_text("ok")
-    (work / "out").mkdir(parents=True, exist_ok=True)
-    (work / "out" / "metrics.json").write_text('{"sharpe": 0.86}')
 
     image_builder = MagicMock(return_value="fixture-image")
     runner = MagicMock()
-    runner.run.return_value = MagicMock(exit_code=0, stdout="", stderr="", duration_seconds=0.1)
+
+    # Simulate each container producing its declared output into the staging
+    # cwd. The orchestrator harvests these to .plutus/results/<step>/ and feeds
+    # each step's output forward to the next via the inter-step bus.
+    def fake_run(**kwargs):
+        c = Path(kwargs["cwd"])
+        cmd = kwargs.get("command", "")
+        if "collect" in cmd:
+            (c / "data" / "raw").mkdir(parents=True, exist_ok=True)
+            (c / "data" / "raw" / "x.parquet").write_text("ok")
+        elif "preprocess" in cmd:
+            (c / "data" / "processed").mkdir(parents=True, exist_ok=True)
+            (c / "data" / "processed" / "x.parquet").write_text("ok")
+        elif "backtest" in cmd:
+            (c / "out").mkdir(parents=True, exist_ok=True)
+            (c / "out" / "metrics.json").write_text('{"sharpe": 0.86}')
+        return MagicMock(exit_code=0, stdout="", stderr="", duration_seconds=0.1)
+
+    runner.run.side_effect = fake_run
 
     # Pre-write the results.json an SDK-instrumented script would have produced
     # for the in_sample step (manifest expects sharpe_ratio=0.85, rel tol 5%).

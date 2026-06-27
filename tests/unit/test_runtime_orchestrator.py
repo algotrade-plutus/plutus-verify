@@ -72,10 +72,7 @@ def test_runtime_runs_all_steps_and_compares_metrics(tmp_path):
     _stage_repo(tmp_path)
     manifest = load_manifest_from_yaml_text(_YAML)
     image_builder = MagicMock(return_value="built-image-tag")
-    runner = MagicMock()
-    runner.run.return_value = MagicMock(
-        exit_code=0, stdout="", stderr="", duration_seconds=0.1,
-    )
+    runner = _runner_ok()
 
     # Pre-write the results.json that the (fake) script would have produced.
     with pv_step("in_sample", repo_path=tmp_path) as r:
@@ -214,10 +211,22 @@ nine_step_coverage: {{}}
 
 
 def _runner_ok():
+    """A runner that simulates a real container: it writes the steps' declared
+    outputs into the staging cwd, so the orchestrator can harvest them into
+    .plutus/results/<step>/ (L2). Writing both steps' outputs on every call is
+    harmless — extract_outputs only keeps the calling step's declared paths.
+    It does NOT write results.json; tests control that via `pv_step`.
+    """
+    def _run(*, image, command, cwd, network, timeout_seconds, env):
+        c = Path(cwd)
+        (c / "data" / "raw").mkdir(parents=True, exist_ok=True)
+        (c / "data" / "raw" / "x").write_text("ok")
+        (c / "out").mkdir(parents=True, exist_ok=True)
+        (c / "out" / "metrics.json").write_text('{"sharpe": 0.0}')
+        return MagicMock(exit_code=0, stdout="", stderr="", duration_seconds=0.1)
+
     runner = MagicMock()
-    runner.run.return_value = MagicMock(
-        exit_code=0, stdout="", stderr="", duration_seconds=0.1
-    )
+    runner.run.side_effect = _run
     return runner
 
 

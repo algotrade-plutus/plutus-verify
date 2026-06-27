@@ -19,6 +19,19 @@ from plutus_verify.spec.runtime.results import (
 )
 
 
+def _copy_into(src: Path, dest: Path) -> int:
+    """Copy a file or directory tree from ``src`` to ``dest`` (replacing any
+    existing ``dest``). Returns the number of files written."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if src.is_dir():
+        if dest.exists():
+            shutil.rmtree(dest)
+        shutil.copytree(src, dest)
+        return sum(1 for _ in dest.rglob("*") if _.is_file())
+    shutil.copy2(src, dest)
+    return 1
+
+
 @dataclass
 class SnapshotResult:
     files_copied: int
@@ -67,39 +80,35 @@ def scaffold_snapshot(
         for step in manifest.steps:
             step_dir = expected_root / step.id
             step_dir.mkdir(parents=True, exist_ok=True)
+            # After an in-container run (run_check_first), produced bytes live in
+            # the per-step results buffer; bless from there and also write a
+            # human-facing copy back to the working tree (result/). With --no-run
+            # (run_check_first=False) the author's local outputs at the declared
+            # paths are the source, and there's nothing extra to write back.
+            if run_check_first:
+                source_base = repo_path / ".plutus" / "results" / step.id
+                result_base: Optional[Path] = repo_path
+            else:
+                source_base = repo_path
+                result_base = None
+
             for output in step.outputs:
-                src = repo_path / output.rstrip("/")
-                if not src.exists() and any(ch in output for ch in "*?["):
-                    matches = list(repo_path.glob(output.rstrip("/")))
-                    if not matches:
-                        notes.append(f"step '{step.id}': output '{output}' missing — skipped")
-                        continue
-                    for m in matches:
-                        rel = m.relative_to(repo_path)
-                        dest = step_dir / rel
-                        dest.parent.mkdir(parents=True, exist_ok=True)
-                        if m.is_dir():
-                            if dest.exists():
-                                shutil.rmtree(dest)
-                            shutil.copytree(m, dest)
-                        else:
-                            shutil.copy2(m, dest)
-                        files_copied += 1
-                    continue
-                if not src.exists():
+                pattern = output.rstrip("/")
+                src = source_base / pattern
+                if src.exists():
+                    matches = [src]
+                elif any(ch in output for ch in "*?["):
+                    matches = list(source_base.glob(pattern))
+                else:
+                    matches = []
+                if not matches:
                     notes.append(f"step '{step.id}': output '{output}' missing — skipped")
                     continue
-                rel = Path(output.rstrip("/"))
-                dest = step_dir / rel
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                if src.is_dir():
-                    if dest.exists():
-                        shutil.rmtree(dest)
-                    shutil.copytree(src, dest)
-                    files_copied += sum(1 for _ in dest.rglob("*") if _.is_file())
-                else:
-                    shutil.copy2(src, dest)
-                    files_copied += 1
+                for m in matches:
+                    rel = m.relative_to(source_base)
+                    files_copied += _copy_into(m, step_dir / rel)
+                    if result_base is not None:
+                        _copy_into(m, result_base / rel)
 
     metrics_updated = 0
     if update_metric_values:

@@ -2,7 +2,11 @@
 from pathlib import Path
 
 from plutus_verify.spec.manifest import Step
-from plutus_verify.spec.runtime.staging import extract_outputs, populate_staging
+from plutus_verify.spec.runtime.staging import (
+    extract_outputs,
+    populate_staging,
+    stage_prior_results,
+)
 
 
 def _step(step_id: str = "s1", **overrides) -> Step:
@@ -118,8 +122,9 @@ def test_extract_outputs_always_returns_plutus_run_dir(tmp_path: Path):
     assert (cwd / ".plutus" / "run" / "s1" / "meta.json").read_text() == '{"exit": 0}\n'
 
 
-def test_extract_outputs_copies_declared_outputs(tmp_path: Path):
-    """Files at paths declared in step.outputs flow back to cwd."""
+def test_extract_outputs_harvests_declared_outputs_to_results_buffer(tmp_path: Path):
+    """L2: declared outputs go to .plutus/results/<step>/<path>, NOT the working
+    tree root — so `check` never mutates the author's result/ files."""
     staging = tmp_path / "staging"
     cwd = tmp_path / "cwd"
     staging.mkdir()
@@ -130,11 +135,15 @@ def test_extract_outputs_copies_declared_outputs(tmp_path: Path):
     (staging / "parameter").mkdir()
     (staging / "parameter" / "optimized.json").write_text('{"x": 1}\n')
 
-    step = _step(outputs=("result/", "parameter/optimized.json"))
+    step = _step("s1", outputs=("result/", "parameter/optimized.json"))
     extract_outputs(staging, cwd, step)
 
-    assert (cwd / "result" / "report.json").read_text() == '{"sharpe": 0.95}\n'
-    assert (cwd / "parameter" / "optimized.json").read_text() == '{"x": 1}\n'
+    results = cwd / ".plutus" / "results" / "s1"
+    assert (results / "result" / "report.json").read_text() == '{"sharpe": 0.95}\n'
+    assert (results / "parameter" / "optimized.json").read_text() == '{"x": 1}\n'
+    # The working tree root is NOT touched (read-only check).
+    assert not (cwd / "result").exists()
+    assert not (cwd / "parameter").exists()
 
 
 def test_extract_outputs_drops_undeclared_writes(tmp_path: Path):
@@ -147,11 +156,52 @@ def test_extract_outputs_drops_undeclared_writes(tmp_path: Path):
     (staging / "result").mkdir()
     (staging / "result" / "expected.json").write_text("declared\n")
 
-    step = _step(outputs=("result/",))
+    step = _step("s1", outputs=("result/",))
     extract_outputs(staging, cwd, step)
 
-    assert (cwd / "result" / "expected.json").exists()
+    results = cwd / ".plutus" / "results" / "s1"
+    assert (results / "result" / "expected.json").exists()
+    assert not (results / "wat.txt").exists()
     assert not (cwd / "wat.txt").exists()
+
+
+def test_stage_prior_results_injects_earlier_outputs_remapped(tmp_path: Path):
+    """The inter-step bus: an earlier step's harvested output at
+    .plutus/results/<step>/<path> must appear in a later step's staging at the
+    declared <path> (not under the .plutus/results/<step>/ prefix)."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    prior = repo / ".plutus" / "results" / "data_preparation" / "data" / "processed"
+    prior.mkdir(parents=True)
+    (prior / "clean.parquet").write_bytes(b"CLEAN")
+
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    stage_prior_results(repo, staging, _step("in_sample"))
+
+    assert (staging / "data" / "processed" / "clean.parquet").read_bytes() == b"CLEAN"
+    # The .plutus/results/<step>/ prefix must NOT be reproduced in staging.
+    assert not (staging / ".plutus" / "results").exists()
+
+
+def test_stage_prior_results_respects_step_inputs_filter(tmp_path: Path):
+    """When a step declares inputs, only prior outputs matching that positive
+    filter are injected — an unrelated earlier output must not leak in (same
+    hermeticity guarantee populate_staging gives for the committed tree)."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    results = repo / ".plutus" / "results"
+    (results / "prep" / "data" / "processed").mkdir(parents=True)
+    (results / "prep" / "data" / "processed" / "clean.parquet").write_bytes(b"WANT")
+    (results / "other" / "scratch").mkdir(parents=True)
+    (results / "other" / "scratch" / "junk.bin").write_bytes(b"LEAK")
+
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    stage_prior_results(repo, staging, _step("in_sample", inputs=("data/processed",)))
+
+    assert (staging / "data" / "processed" / "clean.parquet").exists()
+    assert not (staging / "scratch" / "junk.bin").exists(), "unrelated prior output leaked"
 
 
 def test_orchestrator_runs_step_against_staging_not_cwd(tmp_path: Path):
