@@ -111,10 +111,17 @@ def generate_dockerfile(
                     f"RUN pip install --no-cache-dir /tmp/{sdk_wheel_basename}",
                 ]
             )
-    lines.extend(
-        [
-            "COPY . .",
-            'CMD ["python", "--version"]',
-        ]
-    )
+    lines.append("COPY . .")
+    if env.manager == "uv" and env.install_project:
+        # Install the repo's own package LAST — only now is the source present
+        # (the deps layer above copied just pyproject + lock, kept cache-friendly
+        # via --no-install-project). --no-deps keeps it reproducible (deps are
+        # already pinned by the frozen sync). Non-editable so the package lands in
+        # /opt/venv (outside /srv/repo) and survives the runtime bind-mount; this
+        # makes the repo's console scripts + importable package available to step
+        # commands.
+        lines.append(
+            "RUN uv pip install --python /opt/venv/bin/python --no-cache-dir --no-deps ."
+        )
+    lines.append('CMD ["python", "--version"]')
     return "\n".join(lines) + "\n"

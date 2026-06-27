@@ -1,7 +1,13 @@
 """Tests for the v2 manifest invariants that JSON-Schema can't express."""
+from pathlib import Path
+
 import pytest
 
-from plutus_verify.spec.loader import ManifestLoadError, load_manifest_from_yaml_text
+from plutus_verify.spec.loader import (
+    ManifestLoadError,
+    load_manifest,
+    load_manifest_from_yaml_text,
+)
 
 
 _BASE = """\
@@ -144,3 +150,48 @@ nine_step_coverage: {}
 """
     with pytest.raises(ManifestLoadError, match="secret K.*used_by.*ghost"):
         load_manifest_from_yaml_text(yaml_text)
+
+
+# ---- env.install_project invariants ----
+
+_INSTALL_PROJECT_MANIFEST = """\
+schema_version: "2.0"
+repo: {name: D, primary_language: python}
+env: {base: python, python_version: "3.11", manager: %s, lockfile: uv.lock, install_project: true}
+secrets: []
+data_sources: {processed: [], raw: []}
+steps:
+  - id: in_sample
+    nine_step: step_4_in_sample
+    required: true
+    command: "pmm-backtest"
+expected: []
+nine_step_coverage: {}
+"""
+
+
+def test_install_project_requires_uv_manager():
+    # manager: pip + install_project: true → clear error (uv-only capability).
+    with pytest.raises(ManifestLoadError, match="install_project.*uv"):
+        load_manifest_from_yaml_text(_INSTALL_PROJECT_MANIFEST % "pip")
+
+
+def _write_repo(tmp_path: Path, *, with_pyproject: bool) -> Path:
+    plutus = tmp_path / ".plutus"
+    plutus.mkdir()
+    (plutus / "manifest.yaml").write_text(_INSTALL_PROJECT_MANIFEST % "uv")
+    if with_pyproject:
+        (tmp_path / "pyproject.toml").write_text("[project]\nname='x'\nversion='0'\n")
+    return tmp_path
+
+
+def test_install_project_requires_pyproject_at_repo_root(tmp_path: Path):
+    repo = _write_repo(tmp_path, with_pyproject=False)
+    with pytest.raises(ManifestLoadError, match="install_project.*pyproject"):
+        load_manifest(repo)
+
+
+def test_install_project_ok_with_uv_lockfile_and_pyproject(tmp_path: Path):
+    repo = _write_repo(tmp_path, with_pyproject=True)
+    m = load_manifest(repo)
+    assert m.env.install_project is True

@@ -56,6 +56,13 @@ plutus init .          # writes .plutus/manifest.yaml + an example script
 Fill in `env` (pin with **uv + a committed lockfile** to unlock `byte_exact`
 baselines), `data_sources`, and one `steps[]` entry per pipeline stage.
 
+**Installable-package repo?** If your repo is a real package whose pipeline runs
+via a console script (`pmm-backtest`) or `python -m your_package.…`, set
+`env.install_project: true` (uv-only; needs a `pyproject.toml` at the root). The
+image then installs your package, so those entry points exist for step commands.
+Without it, only your dependencies are installed and `import your_package` / the
+console scripts will fail.
+
 ### 3. Instrument each step's script
 
 Emit metrics through the SDK — the verifier reads them **by name**, never from

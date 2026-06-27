@@ -186,6 +186,33 @@ The nine-step taxonomy keys are `step_1_hypothesis`, `step_2_data_preparation`,
 `step_6_out_of_sample`, `step_7_paper_trading`. Repo-specific steps that don't
 fit a key use `nine_step: null` + a `label`.
 
+### Installable-package repos (`env.install_project`)
+
+If your repo is a real package (a `src/`-layout project whose pipeline runs via a
+console script like `pmm-backtest`, or `python -m your_package.…`), set
+`env.install_project: true` so the image installs your package too — not just its
+dependencies. The console scripts and importable package then exist for step
+commands:
+
+```yaml
+env:
+  base: python
+  python_version: "3.11"
+  manager: uv                 # required for install_project
+  lockfile: uv.lock           # required for install_project
+  install_project: true       # default false → no behavior change for existing repos
+steps:
+  - id: in_sample
+    command: "pmm-backtest"   # a console script from your installed package
+```
+
+It is **uv-only** and requires a `pyproject.toml` at the repo root (the validator
+errors clearly otherwise). Dependencies stay cached in the build's deps layer
+(`uv sync --frozen --no-install-project`); the project is installed last, after the
+source is copied, with `uv pip install --no-deps .` (reproducible — deps are
+already pinned). It's a non-editable install into `/opt/venv`, so the package
+survives the runtime bind-mount of `/srv/repo`.
+
 The `data_preparation` step takes an optional, documentation-only `sub_processes`
 block (`collection` + `processing`) to record what/how data is prepared when a repo
 does more than download ready-to-use files. It is never executed and is only valid
@@ -237,6 +264,9 @@ regression gate.
 
 ## Changelog
 
+- **0.4.6:** new opt-in `env.install_project` (uv-only) — installs the repo's own
+  package into the image so its console scripts / importable package work in step
+  commands (for `src/`-layout installable repos). Default off.
 - **0.4.5:** step failures now persist `stdout`/`stderr` under `.plutus/run/<step>/`
   and print a stderr tail in the report; fetched data sources are cached in the
   gitignored `.plutus/cache/` instead of the working tree (keeping `check`

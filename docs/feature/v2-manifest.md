@@ -67,6 +67,7 @@ env:
   manager: uv                          # uv (locked, recommended) | pip (deprecated)
   lockfile: uv.lock                    # required when manager: uv
   # requirements_file: requirements.txt  # pip path only; or pyproject.toml; null if none
+  install_project: false               # uv-only: also install this repo's own package
   os_packages: [build-essential]       # optional apt packages
   gpu_required: false
 secrets:
@@ -185,6 +186,24 @@ A non-`uv` (or lockfile-less) env is **not reproducibly locked**: `plutus check`
 reports `env: NOT reproducible` and emits a deprecation note. This is a notice
 today; it will become a soft fail (exit 1) in a future release. Pin with uv + a
 committed lockfile to clear it.
+
+`env.install_project` (default `false`) — when `true`, the image installs the
+repo's **own package**, not just its dependencies, so its console scripts (e.g.
+`pmm-backtest`) and importable package are available to step commands. This is for
+`src/`-layout / installable-package repos. Constraints (enforced by the validator):
+
+- **uv-only** — requires `manager: uv` + a committed `lockfile`. The pip path has
+  no project-install step.
+- **`pyproject.toml` at the repo root** — the package is built from it.
+
+Build mechanics: the deps layer stays cache-friendly (`uv sync --frozen
+--no-install-project` copies only `pyproject.toml` + the lockfile). After the full
+source is copied, the project is installed last with
+`uv pip install --python /opt/venv/bin/python --no-cache-dir --no-deps .` —
+`--no-deps` keeps it reproducible (deps already pinned by the frozen sync). The
+install is **non-editable** into `/opt/venv` (outside `/srv/repo`), so the package
+survives the runtime bind-mount that shadows `/srv/repo`; step commands run against
+the build-time-installed package.
 
 ### Data tiers
 

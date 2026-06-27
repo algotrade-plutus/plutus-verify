@@ -31,6 +31,10 @@ class Env:
     requirements_file: Optional[str] = None
     os_packages: tuple[str, ...] = ()
     gpu_required: bool = False
+    # Opt-in (uv path only): also install the repo's own package into the image
+    # so its console scripts + importable package are available to step commands.
+    # Default off → zero behavior change for existing repos.
+    install_project: bool = False
 
 
 @dataclass(frozen=True)

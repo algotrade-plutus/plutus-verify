@@ -44,20 +44,22 @@ def load_manifest(repo_path: Path) -> Manifest:
     manifest_path = repo_path / ".plutus" / "manifest.yaml"
     if not manifest_path.exists():
         raise ManifestLoadError(f"no .plutus/manifest.yaml in {repo_path}")
-    return load_manifest_from_yaml_text(manifest_path.read_text())
+    # Pass repo_path so invariants that need the filesystem (e.g. install_project
+    # requires a pyproject.toml at the repo root) can be checked.
+    return load_manifest_from_yaml_text(manifest_path.read_text(), repo_path=repo_path)
 
 
-def load_manifest_from_yaml_text(text: str) -> Manifest:
+def load_manifest_from_yaml_text(text: str, *, repo_path: Path | None = None) -> Manifest:
     try:
         data = yaml.safe_load(text)
     except yaml.YAMLError as exc:
         raise ManifestLoadError(f"YAML parse error: {exc}") from exc
     if not isinstance(data, dict):
         raise ManifestLoadError("manifest YAML root must be a mapping")
-    return load_manifest_from_dict(data)
+    return load_manifest_from_dict(data, repo_path=repo_path)
 
 
-def load_manifest_from_dict(data: dict[str, Any]) -> Manifest:
+def load_manifest_from_dict(data: dict[str, Any], *, repo_path: Path | None = None) -> Manifest:
     try:
         _VALIDATOR.validate(data)
     except ValidationError as exc:
@@ -66,7 +68,7 @@ def load_manifest_from_dict(data: dict[str, Any]) -> Manifest:
     from plutus_verify.spec.validator import ManifestInvariantError, check_invariants
 
     try:
-        check_invariants(m)
+        check_invariants(m, repo_path=repo_path)
     except ManifestInvariantError as exc:
         raise ManifestLoadError(str(exc)) from exc
     return m
@@ -82,6 +84,7 @@ def _build(d: dict[str, Any]) -> Manifest:
         requirements_file=d["env"].get("requirements_file"),
         os_packages=tuple(d["env"].get("os_packages", ())),
         gpu_required=d["env"].get("gpu_required", False),
+        install_project=d["env"].get("install_project", False),
     )
     secrets = tuple(
         Secret(

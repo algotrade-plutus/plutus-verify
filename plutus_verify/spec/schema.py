@@ -155,6 +155,7 @@ MANIFEST_SCHEMA: dict[str, Any] = {
                 "requirements_file": {"type": ["string", "null"]},
                 "os_packages": {"type": "array", "items": {"type": "string"}},
                 "gpu_required": {"type": "boolean"},
+                "install_project": {"type": "boolean"},
             },
             "additionalProperties": False,
         },

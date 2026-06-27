@@ -12,6 +12,9 @@ JSON-Schema validates structure; this module enforces relationships:
 """
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Optional
+
 from plutus_verify.spec.manifest import RESERVED_SECRET_KEYS, Manifest
 
 
@@ -22,12 +25,28 @@ class ManifestInvariantError(ValueError):
 _DATA_STEP_IDS = ("data_preparation",)
 
 
-def check_invariants(m: Manifest) -> None:
+def check_invariants(m: Manifest, *, repo_path: Optional[Path] = None) -> None:
     if m.env.manager == "uv" and not m.env.lockfile:
         raise ManifestInvariantError(
             "env.manager 'uv' requires env.lockfile to point at a committed "
             "lockfile (e.g. uv.lock) for the verifier to restore"
         )
+
+    if m.env.install_project:
+        # Installing the project requires the reproducible (uv + lockfile) path —
+        # the deprecated pip path re-resolves deps and has no project-install step.
+        if m.env.manager != "uv":
+            raise ManifestInvariantError(
+                "env.install_project requires env.manager 'uv' (with a committed "
+                "lockfile); the pip path does not support project installation"
+            )
+        # The package must be buildable from a pyproject.toml at the repo root.
+        # Only checkable when we have the repo on disk (load_manifest path).
+        if repo_path is not None and not (repo_path / "pyproject.toml").exists():
+            raise ManifestInvariantError(
+                "env.install_project is true but no pyproject.toml exists at the "
+                "repo root — the project package can't be built/installed"
+            )
 
     step_ids = [s.id for s in m.steps]
     if len(set(step_ids)) != len(step_ids):

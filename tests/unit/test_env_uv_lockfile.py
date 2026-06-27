@@ -92,6 +92,55 @@ def test_pip_dockerfile_unchanged():
     assert "uv sync" not in df
 
 
+# ---- env.install_project (optional project install on the uv path) ----
+
+_INSTALL_LINE = "RUN uv pip install --python /opt/venv/bin/python --no-cache-dir --no-deps ."
+
+
+def test_install_project_defaults_false():
+    m = load_manifest_from_yaml_text(_manifest_yaml(_UV_ENV))
+    assert m.env.install_project is False
+
+
+def test_install_project_parsed_true():
+    env = _UV_ENV + "  install_project: true\n"
+    m = load_manifest_from_yaml_text(_manifest_yaml(env))
+    assert m.env.install_project is True
+
+
+def test_install_project_emits_install_after_copy():
+    env = Env(
+        base="python", python_version="3.11", manager="uv",
+        lockfile="uv.lock", install_project=True,
+    )
+    df = generate_dockerfile(env)
+    assert _INSTALL_LINE in df
+    # The project install must come AFTER the full source is copied (the deps
+    # layer only has pyproject + lock), and the deps sync stays cache-friendly.
+    assert df.index("COPY . .") < df.index(_INSTALL_LINE)
+    assert "RUN uv sync --frozen --no-install-project" in df
+
+
+def test_install_project_false_omits_install_line():
+    env = Env(
+        base="python", python_version="3.11", manager="uv",
+        lockfile="uv.lock", install_project=False,
+    )
+    df = generate_dockerfile(env)
+    assert _INSTALL_LINE not in df
+
+
+def test_install_project_ignored_on_pip_path():
+    # install_project is a uv-only capability; the validator rejects it on pip,
+    # but dockerfile_gen must also never emit the uv install line for pip.
+    env = Env(
+        base="python", python_version="3.11",
+        requirements_file="requirements.txt", install_project=True,
+    )
+    df = generate_dockerfile(env)
+    assert _INSTALL_LINE not in df
+
+
 # ---- env reproducibility classification + check report ----
 
 def _runtime(env_reproducible: bool, notes=None):
