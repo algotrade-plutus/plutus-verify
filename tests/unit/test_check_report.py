@@ -59,6 +59,26 @@ def _ok_sr(step_id: str, *, skipped_reason: str | None = None) -> StepRuntimeRes
     )
 
 
+def test_failed_step_report_includes_stderr_tail():
+    """A non-zero step must surface its captured stderr in the report, not just
+    `exit=N` — otherwise the user has to docker-run the image by hand to see why."""
+    steps = (Step(id="in_sample", nine_step="step_4_in_sample", required=True, command="x"),)
+    manifest = _make_manifest(steps=steps)
+    runtime = _make_runtime(
+        step_results={
+            "in_sample": StepRuntimeResult(
+                step_id="in_sample",
+                exit_code=1,
+                duration_seconds=0.1,
+                stdout="loading data...\n",
+                stderr="Traceback (most recent call last):\nValueError: boom\n",
+            )
+        }
+    )
+    out = "\n".join(render_check_report(manifest, runtime))
+    assert "ValueError: boom" in out, f"stderr tail missing from report:\n{out}"
+
+
 # ---------------------------------------------------------------------------
 # 1) grouping by nine-step
 # ---------------------------------------------------------------------------

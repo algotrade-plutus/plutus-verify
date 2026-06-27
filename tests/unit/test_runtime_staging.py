@@ -5,6 +5,7 @@ from plutus_verify.spec.manifest import Step
 from plutus_verify.spec.runtime.staging import (
     extract_outputs,
     populate_staging,
+    stage_data_cache,
     stage_prior_results,
 )
 
@@ -184,6 +185,24 @@ def test_stage_prior_results_injects_earlier_outputs_remapped(tmp_path: Path):
     assert not (staging / ".plutus" / "results").exists()
 
 
+def test_stage_data_cache_overlays_downloaded_data_remapped(tmp_path: Path):
+    """Downloaded data cached at .plutus/cache/<path> must reach a step's staging
+    at the declared <path>, so steps see fetched inputs without the working tree
+    ever being written (Bug 3)."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    cached = repo / ".plutus" / "cache" / "data" / "raw"
+    cached.mkdir(parents=True)
+    (cached / "x.parquet").write_bytes(b"DATA")
+
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    stage_data_cache(repo, staging, _step("data_preparation"))
+
+    assert (staging / "data" / "raw" / "x.parquet").read_bytes() == b"DATA"
+    assert not (staging / ".plutus" / "cache").exists()
+
+
 def test_stage_prior_results_respects_step_inputs_filter(tmp_path: Path):
     """When a step declares inputs, only prior outputs matching that positive
     filter are injected — an unrelated earlier output must not leak in (same
@@ -253,3 +272,38 @@ def test_orchestrator_runs_step_against_staging_not_cwd(tmp_path: Path):
     assert observed["has_script"] is True, "load-bearing script.py missing from staging"
     # Bookkeeping was extracted back to repo after the step finished
     assert (repo / ".plutus" / "run" / "s1" / "stdout").read_text() == "hi\n"
+
+
+def test_run_step_persists_stdout_stderr_for_diagnostics(tmp_path: Path):
+    """A failing step must leave its captured stdout/stderr on disk under
+    .plutus/run/<step>/ so the failure is diagnosable without re-running the
+    container by hand (real DockerRunner returns them only in the ExecResult)."""
+    from plutus_verify.spec.runtime.orchestrator import _run_step
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "script.py").write_text("raise SystemExit(1)\n")
+    step = _step("s1", command="python script.py")
+
+    class FailingRunner:
+        def run(self, *, image, command, cwd, network, timeout_seconds, env):
+            class R:
+                exit_code = 1
+                duration_seconds = 0.2
+                stdout = "loading data...\n"
+                stderr = "Traceback (most recent call last):\nValueError: boom\n"
+            return R()
+
+    sr = _run_step(
+        step=step,
+        image="img",
+        repo_path=repo,
+        runner=FailingRunner(),
+        secrets={},
+        satisfied=frozenset(),
+    )
+
+    assert sr.exit_code == 1
+    run_dir = repo / ".plutus" / "run" / "s1"
+    assert (run_dir / "stderr").read_text() == "Traceback (most recent call last):\nValueError: boom\n"
+    assert (run_dir / "stdout").read_text() == "loading data...\n"

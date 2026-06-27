@@ -35,6 +35,46 @@ def test_no_data_sources_marks_nothing_satisfied(tmp_path):
     assert res.tier_used == "code"
 
 
+def test_download_target_is_cache_not_working_tree(tmp_path):
+    """check must stay read-only: downloaded data lands in the gitignored
+    .plutus/cache/, never the working tree (Bug 3)."""
+    raw_ds = DataSource(
+        kind="github_release",
+        url="https://github.com/x/y/raw.tar.gz",
+        expected_layout=("data/raw/x",),
+        satisfies=("data_preparation",),
+    )
+    m = _manifest_with_sources(raw=(raw_ds,))
+
+    def fake_dl(source, target_dir):
+        (target_dir / "data" / "raw").mkdir(parents=True, exist_ok=True)
+        (target_dir / "data" / "raw" / "x").write_text("ok")
+        return True
+
+    res = resolve_data_tiers(m, repo_path=tmp_path, downloader=fake_dl)
+    assert res.satisfied == frozenset({"data_preparation"})
+    assert not (tmp_path / "data" / "raw" / "x").exists(), "download dirtied the working tree"
+    assert (tmp_path / ".plutus" / "cache" / "data" / "raw" / "x").exists()
+
+
+def test_committed_layout_still_counts_without_download(tmp_path):
+    """Data already committed in the working tree counts as present (no download
+    needed) — the cache is only for fetched data."""
+    (tmp_path / "data" / "raw").mkdir(parents=True)
+    (tmp_path / "data" / "raw" / "x").write_text("ok")
+    raw_ds = DataSource(
+        kind="github_release",
+        url="https://example.com/raw.tar.gz",
+        expected_layout=("data/raw/x",),
+        satisfies=("data_preparation",),
+    )
+    m = _manifest_with_sources(raw=(raw_ds,))
+    downloader = MagicMock(return_value=False)
+    res = resolve_data_tiers(m, repo_path=tmp_path, downloader=downloader)
+    assert res.satisfied == frozenset({"data_preparation"})
+    downloader.assert_not_called()
+
+
 def test_processed_satisfies_multiple_steps(tmp_path):
     ds = DataSource(
         kind="google_drive",

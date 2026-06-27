@@ -13,6 +13,7 @@ from plutus_verify.scaffold.templates import (
     MANIFEST_SKELETON,
     WORKFLOW_YAML,
 )
+from plutus_verify.spec.runtime.real_image_builder import ensure_dockerignore
 
 
 @dataclass(frozen=True)
@@ -22,6 +23,7 @@ class InitResult:
     created_workflow: bool
     created_expected_dir: bool
     created_example_script: bool
+    created_dockerignore: bool = False
 
 
 def scaffold_init(repo_path: Path, *, force: bool = False) -> InitResult:
@@ -51,10 +53,16 @@ def scaffold_init(repo_path: Path, *, force: bool = False) -> InitResult:
         workflow_path.write_text(WORKFLOW_YAML)
         created_workflow = True
 
+    # Scaffold .dockerignore now (setup time) so the author commits it, and the
+    # read-only `check` command never has to create it itself. ensure_dockerignore
+    # leaves any existing (user-authored) file untouched.
+    created_dockerignore = ensure_dockerignore(repo_path)
+
     return InitResult(
         repo_path=repo_path,
         created_manifest=created_manifest,
         created_workflow=created_workflow,
         created_expected_dir=created_expected,
         created_example_script=created_example,
+        created_dockerignore=created_dockerignore,
     )

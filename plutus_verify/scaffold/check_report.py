@@ -5,6 +5,8 @@ from plutus_verify.spec.manifest import Manifest, NINE_STEP_KEYS, Step
 from plutus_verify.spec.runtime import V2RuntimeResult
 
 
+_STDERR_TAIL_LINES = 15
+
 _NINE_STEP_TITLES = {
     "step_1_hypothesis": "Step 1: Hypothesis",
     "step_2_data_preparation": "Step 2: Data Preparation",
@@ -91,6 +93,17 @@ def _render_step(step: Step, runtime: V2RuntimeResult) -> list[str]:
     skip = f" (skipped: {sr.skipped_reason})" if sr.skipped_reason else ""
     pf = f" [preflight: {sr.preflight_error}]" if sr.preflight_error else ""
     out.append(f"  {status} {step.id}: exit={sr.exit_code}{skip}{pf}")
+
+    # On failure, surface a tail of the captured stderr so the user can see WHY
+    # without re-running the container. Full logs persist at
+    # .plutus/run/<step>/{stdout,stderr}.
+    if status == "FAIL" and sr.stderr and sr.stderr.strip():
+        tail = [ln for ln in sr.stderr.splitlines() if ln.strip()][-_STDERR_TAIL_LINES:]
+        if tail:
+            out.append(
+                f"    stderr (last {len(tail)} lines; full log: .plutus/run/{step.id}/stderr):"
+            )
+            out.extend(f"      {ln}" for ln in tail)
 
     # Documented data_preparation sub-processes (documentation only, not executed).
     if step.sub_processes is not None:

@@ -16,6 +16,25 @@ def test_init_creates_manifest_and_workflow(tmp_path: Path):
     assert res.created_workflow is True
 
 
+def test_init_scaffolds_dockerignore(tmp_path: Path):
+    """init should create the .dockerignore baseline at setup time so `check`
+    (a read-only command) doesn't surprise-write it into the working tree later."""
+    res = scaffold_init(tmp_path)
+    dockerignore = tmp_path / ".dockerignore"
+    assert dockerignore.exists()
+    content = dockerignore.read_text()
+    assert ".env\n" in content
+    assert ".plutus/results/\n" in content
+    assert res.created_dockerignore is True
+
+
+def test_init_does_not_overwrite_existing_dockerignore(tmp_path: Path):
+    (tmp_path / ".dockerignore").write_text("# mine\n")
+    res = scaffold_init(tmp_path)
+    assert res.created_dockerignore is False
+    assert (tmp_path / ".dockerignore").read_text() == "# mine\n"
+
+
 def test_init_does_not_overwrite_existing_manifest(tmp_path: Path):
     plutus = tmp_path / ".plutus"
     plutus.mkdir()

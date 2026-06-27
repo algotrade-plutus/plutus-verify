@@ -34,13 +34,18 @@ caught (missing groundtruth → fail) and undeclared drift fails on purpose.
 ```bash
 pip install -e "/path/to/plutus-verify[runner]"   # or: uv pip install <release-wheel>
 cd your-strategy-repo
-printf '.plutus/run/\n.plutus/results/\n' >> .gitignore
+printf '.plutus/run/\n.plutus/results/\n.plutus/cache/\n' >> .gitignore
 ```
 
-`.plutus/results/` **must** be gitignored — every `check` writes into it, and
-committing it would put working-tree churn back (the exact thing 0.4.4 removed).
-The framework already keeps it out of the Docker image; the `.gitignore` line is
-yours to add.
+Three `.plutus/` subdirs are ephemeral and **must** be gitignored:
+- `.plutus/results/` — per-run produced outputs (every `check` writes here).
+- `.plutus/cache/` — fetched data sources (downloads land here, not your tree).
+- `.plutus/run/` — per-step bookkeeping + captured `stdout`/`stderr`.
+
+Committing any of them would put working-tree churn back (the exact thing the
+read-only design removed). The framework already keeps them out of the Docker
+image; the `.gitignore` line is yours to add. (`plutus init` writes a
+`.dockerignore` for you — commit it.)
 
 ### 2. Scaffold the manifest (if you don't have one)
 
@@ -122,6 +127,9 @@ a GitHub Actions workflow you can keep.
 - **`check` fails after a code change you didn't intend to change output?** That's
   the feature working — investigate the diff (`git diff` shows nothing in the tree;
   inspect `.plutus/results/<step>/` vs `.plutus/expected/<step>/`).
+- **A step crashed?** The report prints a tail of its stderr, and the full
+  `stdout`/`stderr` are saved at `.plutus/run/<step>/` — no need to re-run the
+  container by hand.
 - **Upgrading from pre-0.4.4:** your old baselines were captured from the laptop.
   Re-`snapshot` once in-container to refresh them — you can now promote fragile
   `visual_similarity` charts to `byte_exact`, and stop committing churny rendered

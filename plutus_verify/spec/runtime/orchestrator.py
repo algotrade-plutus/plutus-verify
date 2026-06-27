@@ -28,6 +28,7 @@ from plutus_verify.spec.runtime.staging import (
     extract_outputs,
     harvest_committed_outputs,
     populate_staging,
+    stage_data_cache,
     stage_prior_results,
 )
 from plutus_verify.spec.runtime.preflight import (
@@ -292,6 +293,9 @@ def _run_step(
     with tempfile.TemporaryDirectory(prefix=f"plutus-stage-{step.id}-") as staging_str:
         staging = Path(staging_str)
         populate_staging(repo_path, staging, step)
+        # Overlay any data fetched into .plutus/cache/ (Bug 3: downloads never
+        # touch the working tree, so they're injected into the sandbox here).
+        stage_data_cache(repo_path, staging, step)
         # Inter-step bus: earlier steps' produced outputs (now in
         # .plutus/results/) are injected at their declared paths so this step
         # sees them even when the intermediate isn't committed (Decision 1).
@@ -323,6 +327,14 @@ def _run_step(
         stdout=getattr(exec_result, "stdout", ""),
         stderr=getattr(exec_result, "stderr", ""),
     )
+    # Persist captured output so a failure is diagnosable from disk. The real
+    # DockerRunner returns stdout/stderr only in the ExecResult; without this,
+    # .plutus/run/<step>/ is empty on an early crash and the user must re-run the
+    # container by hand to recover the traceback.
+    run_log_dir = repo_path / ".plutus" / "run" / step.id
+    run_log_dir.mkdir(parents=True, exist_ok=True)
+    (run_log_dir / "stdout").write_text(sr.stdout or "")
+    (run_log_dir / "stderr").write_text(sr.stderr or "")
     if sr.exit_code == 0:
         # The step produced its outputs into the results buffer; verify there.
         try:

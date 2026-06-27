@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "plutus-verify"
-version = "0.4.3"
+version = "0.4.5"
 description = "Automated reproducibility verifier for PLUTUS-standard trading algorithm repos"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -36,7 +36,7 @@ dependencies = [
 # Consumer-facing feature extras (installed via `pip install plutus-verify[...]`).
 [project.optional-dependencies]
 llm = ["openai>=1.40"]
-runner = ["docker>=7.0", "jupyter-repo2docker>=2024.3", "build>=1.0"]
+runner = ["docker>=7.0", "jupyter-repo2docker>=2024.3", "build>=1.0", "gdown>=5.0"]
 charts = ["cairosvg>=2.7", "pillow>=10.0"]
 
 # Contributor environment (PEP 735). `uv sync` installs this automatically (see
@@ -50,6 +50,7 @@ dev = [
   "build>=1.0",
   "docker>=7.0",
   "jupyter-repo2docker>=2024.3",
+  "gdown>=5.0",
   "cairosvg>=2.7",
   "pillow>=10.0",
   "openai>=1.40",

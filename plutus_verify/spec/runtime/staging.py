@@ -92,6 +92,34 @@ def extract_outputs(staging: Path, cwd: Path, step: Step) -> None:
         shutil.copy2(src, dest)
 
 
+def stage_data_cache(repo_path: Path, staging: Path, step: Step) -> None:
+    """Overlay downloaded data from ``.plutus/cache/`` into ``staging`` at the
+    declared layout paths.
+
+    Data sources are fetched into the gitignored ``.plutus/cache/`` (not the
+    working tree, so ``check`` stays read-only — Bug 3). A step reads data at its
+    declared path (e.g. ``data/raw/x.parquet``), so the cache's prefix is
+    stripped on the way in: ``.plutus/cache/<path>`` → ``staging/<path>``. As with
+    :func:`stage_prior_results`, a non-empty ``step.inputs`` filters what's
+    injected (hermeticity); empty means inject everything cached.
+    """
+    cache_root = repo_path / ".plutus" / "cache"
+    if not cache_root.exists():
+        return
+    inputs_spec: pathspec.PathSpec | None = None
+    if step.inputs:
+        inputs_spec = pathspec.PathSpec.from_lines("gitignore", list(step.inputs))
+    for src in cache_root.rglob("*"):
+        if src.is_dir():
+            continue
+        rel = src.relative_to(cache_root)
+        if inputs_spec is not None and not inputs_spec.match_file(rel.as_posix()):
+            continue
+        dest = staging / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dest)
+
+
 def harvest_committed_outputs(repo_path: Path, step: Step) -> None:
     """Mirror an ``artifact_check`` step's *committed* outputs from the working
     tree into ``.plutus/results/<step_id>/``.

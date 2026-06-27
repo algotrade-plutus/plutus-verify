@@ -37,7 +37,15 @@ def resolve_data_tiers(
     repo_path: Path,
     downloader: Downloader,
     force_tier: Optional[Literal["processed", "raw", "code"]] = None,
+    cache_root: Optional[Path] = None,
 ) -> DataTierResult:
+    # Downloads land in a gitignored cache, NOT the working tree, so `check`
+    # stays read-only (Bug 3). Data already committed in the working tree still
+    # counts as present (no download). The cache persists across runs so a
+    # 260 MB fetch isn't repeated every check; clear .plutus/cache/ to refetch.
+    cache_root = cache_root if cache_root is not None else repo_path / ".plutus" / "cache"
+    roots = (repo_path, cache_root)
+
     notes: list[str] = []
     if force_tier == "code":
         return DataTierResult(
@@ -49,17 +57,17 @@ def resolve_data_tiers(
 
     if force_tier in (None, "processed"):
         for ds in manifest.data_sources.processed:
-            if _layout_present(repo_path, ds.expected_layout):
+            if _layout_present(roots, ds.expected_layout):
                 notes.append(f"processed/{ds.kind}: layout already present")
                 satisfied.update(ds.satisfies)
                 tier_used = "processed"
                 continue
             try:
-                ok = downloader(ds, repo_path)
+                ok = downloader(ds, cache_root)
             except Exception as exc:  # noqa: BLE001
                 notes.append(f"processed/{ds.kind} failed: {exc}")
                 continue
-            if ok and _layout_present(repo_path, ds.expected_layout):
+            if ok and _layout_present(roots, ds.expected_layout):
                 notes.append(f"processed/{ds.kind}: downloaded")
                 satisfied.update(ds.satisfies)
                 tier_used = "processed"
@@ -68,18 +76,18 @@ def resolve_data_tiers(
         for ds in manifest.data_sources.raw:
             if set(ds.satisfies).issubset(satisfied):
                 continue
-            if _layout_present(repo_path, ds.expected_layout):
+            if _layout_present(roots, ds.expected_layout):
                 notes.append(f"raw/{ds.kind}: layout already present")
                 satisfied.update(ds.satisfies)
                 if tier_used == "code":
                     tier_used = "raw"
                 continue
             try:
-                ok = downloader(ds, repo_path)
+                ok = downloader(ds, cache_root)
             except Exception as exc:  # noqa: BLE001
                 notes.append(f"raw/{ds.kind} failed: {exc}")
                 continue
-            if ok and _layout_present(repo_path, ds.expected_layout):
+            if ok and _layout_present(roots, ds.expected_layout):
                 notes.append(f"raw/{ds.kind}: downloaded")
                 satisfied.update(ds.satisfies)
                 if tier_used == "code":
@@ -88,15 +96,18 @@ def resolve_data_tiers(
     return DataTierResult(satisfied=frozenset(satisfied), tier_used=tier_used, notes=tuple(notes))
 
 
-def _layout_present(repo_path: Path, expected_layout: tuple[str, ...]) -> bool:
+def _layout_present(roots: tuple[Path, ...], expected_layout: tuple[str, ...]) -> bool:
+    """True if every entry of ``expected_layout`` exists under *any* of ``roots``
+    (the committed working tree or the download cache)."""
     if not expected_layout:
         return False
     for entry in expected_layout:
+        stripped = entry.rstrip("/")
         if any(ch in entry for ch in "*?["):
-            if not any(True for _ in repo_path.glob(entry.rstrip("/"))):
+            if not any(any(True for _ in r.glob(stripped)) for r in roots):
                 return False
         else:
-            if not (repo_path / entry).exists():
+            if not any((r / stripped).exists() for r in roots):
                 return False
     return True
 

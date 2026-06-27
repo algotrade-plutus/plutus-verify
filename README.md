@@ -106,8 +106,8 @@ actionable `SdkBundleError` — if the install has no usable files at all (e.g. 
 ## Quick start
 
 ```bash
-plutus init .                      # scaffold .plutus/manifest.yaml + CI workflow + example script
-echo ".plutus/results/" >> .gitignore   # per-run scratch buffer — never committed
+plutus init .                      # scaffold manifest + CI workflow + example script + .dockerignore
+printf '.plutus/run/\n.plutus/results/\n.plutus/cache/\n' >> .gitignore   # ephemera — never committed
 # 1. instrument each step's script (see .plutus/example_script.py):
 #      import plutus_verify as pv
 #      with pv.step("in_sample") as r:
@@ -127,12 +127,14 @@ Exit codes:
 `plutus check` builds an image from `.plutus/Dockerfile.generated` (derived from
 the manifest's `env`), then runs each step in an isolated staging copy of the
 repo filtered by `.dockerignore` (and `step.inputs`, if declared) — the host
-`.env` and stale caches cannot leak into the container at runtime. Bookkeeping
-lands in `.plutus/run/<step_id>/`; produced artifacts are harvested to the
-gitignored `.plutus/results/<step_id>/` and compared there, so `check` never
-touches your committed files. Earlier steps' outputs flow to later steps through
-that same buffer (the inter-step data bus), so multi-step pipelines reproduce
-end-to-end without writing the working tree.
+`.env` and stale caches cannot leak into the container at runtime. Bookkeeping —
+including each step's captured `stdout`/`stderr` — lands in `.plutus/run/<step_id>/`
+(a failing step's stderr tail is also printed in the report); produced artifacts
+are harvested to the gitignored `.plutus/results/<step_id>/` and compared there;
+fetched data sources are cached under `.plutus/cache/`. None of these touch your
+committed files. Earlier steps' outputs flow to later steps through the results
+buffer (the inter-step data bus), so multi-step pipelines reproduce end-to-end
+without writing the working tree.
 
 ## CLI
 
@@ -235,6 +237,11 @@ regression gate.
 
 ## Changelog
 
+- **0.4.5:** step failures now persist `stdout`/`stderr` under `.plutus/run/<step>/`
+  and print a stderr tail in the report; fetched data sources are cached in the
+  gitignored `.plutus/cache/` instead of the working tree (keeping `check`
+  read-only); `plutus init` scaffolds `.dockerignore`; `gdown` added to the
+  `runner` extra (Google-Drive sources work out of the box).
 - **0.4.4:** `check` is now **read-only** — produced artifacts are harvested to the
   gitignored `.plutus/results/` and compared there, never overwriting committed
   files; earlier steps reach later ones through that buffer. `snapshot` now runs
