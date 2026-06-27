@@ -33,11 +33,30 @@ dependencies = [
   "pathspec>=0.12",
 ]
 
+# Consumer-facing feature extras (installed via `pip install plutus-verify[...]`).
 [project.optional-dependencies]
 llm = ["openai>=1.40"]
 runner = ["docker>=7.0", "jupyter-repo2docker>=2024.3", "build>=1.0"]
 charts = ["cairosvg>=2.7", "pillow>=10.0"]
-dev = ["pytest>=8.0", "pytest-cov>=4.1"]
+
+# Contributor environment (PEP 735). `uv sync` installs this automatically (see
+# [tool.uv].default-groups), so `uv run pytest` exercises the FULL suite —
+# including the docker/charts/llm-backed tests — with no extra flags. It is a
+# superset of the feature extras' libraries plus the test toolchain.
+[dependency-groups]
+dev = [
+  "pytest>=8.0",
+  "pytest-cov>=4.1",
+  "build>=1.0",
+  "docker>=7.0",
+  "jupyter-repo2docker>=2024.3",
+  "cairosvg>=2.7",
+  "pillow>=10.0",
+  "openai>=1.40",
+]
+
+[tool.uv]
+default-groups = ["dev"]
 
 [project.urls]
 Source = "https://github.com/algotrade-plutus/plutus-verify"
