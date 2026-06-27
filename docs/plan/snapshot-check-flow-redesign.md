@@ -1,8 +1,9 @@
 ---
 title: Snapshot/Check flow — read-only verify + in-container snapshot
 feature: snapshot-check-flow
-status: proposed (design agreed; two decisions open)
+status: implemented (L1 + L2 landed; both decisions resolved)
 date: 2026-06-27
+updated: 2026-06-28
 origin: 9-step dogfood handoff → verify-session deliberation
 ---
 
@@ -11,7 +12,8 @@ origin: 9-step dogfood handoff → verify-session deliberation
 > **What this is.** A design record + proposal for the `plutus snapshot` / `plutus check`
 > data flow. It started as a 9-step dogfood brief (2 limitations + 1 design question) and
 > became a full deliberation. This doc captures the verified mechanics, the reasoning, the
-> agreed direction, and the two decisions still open. Implementation has **not** started.
+> agreed direction, and the (now-resolved) decisions. Implementation is **complete** —
+> see §12 for the as-built summary.
 
 ## TL;DR — what we concluded
 
@@ -22,12 +24,16 @@ origin: 9-step dogfood handoff → verify-session deliberation
      captured from the **laptop**, but `check` verifies in the **container**. Env mismatch.
    - **L2** — `check` **overwrites** `result/` with the container's output → verification
      mutates the working tree; `check` is not read-only.
-3. Fixing L1 + L2 collapses the mental model to **two verbs**:
+3. Fixing L1 + L2 collapses the mental model to **two verbs** over **three stores**:
    - **`snapshot` = bless** (runs in the container; writes groundtruth: metric *numbers* →
-     manifest, artifact *files* → `.plutus/expected/`).
-   - **`check` = verify** (read-only; regenerate in a sandbox, diff against groundtruth).
-4. **Two decisions remain open** (see §10): (a) inter-step output propagation, and
-   (b) whether `snapshot` also writes a human-facing `result/`.
+     manifest, artifact *files* → `.plutus/expected/`; also drops a human-facing `result/`).
+   - **`check` = verify** (read-only; regenerate into `.plutus/results/`, diff against groundtruth).
+   - The three stores: **`.plutus/expected/`** = committed, snapshot-only groundtruth (the
+     database); **`.plutus/results/`** = ephemeral per-run harvest buffer, written by *both* verbs,
+     **gitignored**; **`result/`** = committed, snapshot-only human-facing view (the UI).
+4. **Both decisions are now resolved** (see §10): (1) inter-step output propagation =
+   thread harvested outputs forward via `.plutus/results/` (option a); (2) `snapshot` **does**
+   write a human-facing `result/`. Both fall out of naming the harvest buffer `.plutus/results/`.
 
 ---
 
@@ -126,9 +132,10 @@ container render shows up as a git modification after **every** `check`: a raste
 README chart churns on each run, real diffs are harder to spot, and `check` is not read-only.
 (Worked around in the dogfood by making charts pure-vector + deterministic so the bytes match.)
 
-**Fix (L2).** Write produced outputs to a **sandbox** (e.g. `.plutus/run/<step>/outputs/`)
-instead of overwriting `result/`, and point `produced_path` at the sandbox. `check` becomes
-read-only w.r.t. the working tree.
+**Fix (L2).** Write produced artifact files to a **per-step buffer** (`.plutus/results/<step>/`)
+instead of overwriting `result/`, and point `produced_path` at that buffer. `check` becomes
+read-only w.r.t. the working tree. (Only the declared `step.outputs` *files* move; the metrics
+channel's `.plutus/run/<step>/results.json` is unaffected — see §7.2.)
 
 **Caveat (the load-bearing subtlety).** The current writeback is **also the inter-step data
 bus**: each step runs in a fresh staging copy populated from the working tree, so today step N's
@@ -197,8 +204,11 @@ author only ever touches two verbs.
 
 ### 6.4 Conclusion
 **Keep `.plutus/expected/` as the snapshot-only frozen groundtruth. Drop the single-folder
-idea.** The remaining work is L1 + L2 (+ the §10 decisions). Duplication with `result/` becomes
-optional (see Decision 2) — and git-deduped regardless.
+idea.** The remaining work is L1 + L2 (the §10 decisions are now resolved — see §10). Note the
+naming trap this clears up: `.plutus/expected/` is the groundtruth/database, **not**
+`.plutus/results/`. The latter is the ephemeral per-run buffer written by every `check`, so it
+*cannot* be the snapshot-only groundtruth; it's the "produced this run" scratch area. Duplication
+with `result/` is accepted (Decision 2 = yes) and git-deduped regardless.
 
 ---
 
@@ -214,15 +224,39 @@ Decide `snapshot`'s produce-machinery and you've decided `check`'s too (they're 
 the last move). That's why `snapshot` is specced first (§8).
 
 ### 7.2 The two-verb model (target end-state)
-- **`snapshot` = bless** — runs in the container; writes the groundtruth: metric *numbers* →
-  `manifest.yaml`, artifact *files* → `.plutus/expected/`. The **only** way to bless.
-- **`check` = verify** — read-only; regenerate in a sandbox, diff against the frozen groundtruth
-  (numbers in the manifest + files in `.plutus/expected/`). Never writes the working tree.
+- **`snapshot` = bless** — runs in the container; harvests each step's output into
+  `.plutus/results/`, then writes the groundtruth: metric *numbers* → `manifest.yaml`, artifact
+  *files* → `.plutus/expected/`, plus a human-facing copy → `result/`. The **only** way to bless.
+- **`check` = verify** — read-only w.r.t. the working tree; regenerate into `.plutus/results/`,
+  diff against the frozen groundtruth (numbers in the manifest + files in `.plutus/expected/`).
+  Never writes `.plutus/expected/`, `result/`, or any tracked file.
+
+#### The three stores
+
+| Store | Role | Written by | Committed |
+|---|---|---|---|
+| `.plutus/expected/<step>/…` | groundtruth / database (frozen baseline files) | **`snapshot` only** | yes |
+| `manifest.yaml` `expected.metrics[].value` | groundtruth / database (frozen baseline numbers) | **`snapshot` only** | yes |
+| `.plutus/results/<step>/…` | per-run harvest buffer + inter-step bus ("produced this run") | `snapshot` **and** `check` | **no — gitignored** |
+| `result/…` | human-facing view for the README (the UI) | `snapshot` only | yes |
+
+#### What gets compared
 
 | | Groundtruth (committed, snapshot-only) | Produced by `check` | Compared |
 |---|---|---|---|
-| **Numbers** | `manifest.yaml` `expected.metrics[].value` | `results.json` (ephemeral, in sandbox) | within tolerance |
-| **Files** | `.plutus/expected/<step>/…` | sandbox copy | byte_exact / json_numeric / visual |
+| **Numbers** | `manifest.yaml` `expected.metrics[].value` | `.plutus/run/<step>/results.json` *(unchanged)* | within tolerance |
+| **Files** | `.plutus/expected/<step>/…` | `.plutus/results/<step>/…` | byte_exact / json_numeric / visual |
+
+> **Naming guard.** It is tempting to call `.plutus/results/` "the groundtruth," but it is written
+> by *every* `check`, so it can't be the snapshot-only baseline. The database is
+> `.plutus/expected/` (+ the manifest numbers); `.plutus/results/` is scratch; `result/` is the UI.
+
+> **Scope guard (the metrics channel is untouched).** Only artifact *files* move to
+> `.plutus/results/`. Metric *numbers* keep flowing through `.plutus/run/<step>/results.json` (the
+> SDK writes it, `extract_outputs` returns it, `_compare_metrics` and the snapshot metric-bless
+> read it) — that path already works and is orthogonal to L1/L2. Both `.plutus/run/` and
+> `.plutus/results/` are wiped at the start of every run so a stale prior-run file can never
+> produce a false-positive comparison or get blessed.
 
 ---
 
@@ -236,27 +270,32 @@ the last move). That's why `snapshot` is specced first (§8).
 3. **Run the pipeline**, steps in dependency order. For each step:
    - a. fresh **sandbox** dir;
    - b. **populate** it = committed tree (filtered by `.dockerignore` + `step.inputs`)
-     **＋ [outputs of earlier steps in this run]** ← *the propagation slot — Decision 1*;
+     **＋ earlier steps' `.plutus/results/`** ← *the inter-step bus (Decision 1 = option a)*;
    - c. **run** the step's command in the container;
    - d. the step writes, inside the sandbox: `.plutus/run/<step>/results.json` (metrics, via the
      SDK) + its declared `step.outputs` files;
-   - e. **harvest** from the sandbox into a retained per-step area (e.g.
-     `.plutus/run/<step>/outputs/`): the results.json + each declared output file.
-     *(Nothing is written to `result/` here.)*
+   - e. **harvest** from the sandbox: `.plutus/run/<step>/` (bookkeeping + results.json) back to
+     cwd as today, and each declared `step.outputs` file into the retained per-step buffer
+     `.plutus/results/<step>/`. *(Nothing is written to `result/` or `.plutus/expected/` yet.)*
 4. **Bless** — gated on *all required steps exited 0* (refuse to bless a failing run, as today
    at `scaffold/snapshot.py:54-58`):
-   - **Metrics:** for each `expected` step, read its harvested results.json → write the values
-     into `manifest.yaml` (`expected.metrics[].value`). *(Already implemented.)*
-   - **Artifacts:** copy each harvested declared output → `.plutus/expected/<step>/<path>`.
-   - *(Optional — Decision 2)* also drop a human-facing copy into `result/` for the README.
+   - **Metrics:** for each `expected` step, read its `.plutus/run/<step>/results.json` → write the
+     values into `manifest.yaml` (`expected.metrics[].value`). *(Already implemented; source path
+     unchanged.)*
+   - **Artifacts:** copy each harvested output from `.plutus/results/<step>/` →
+     `.plutus/expected/<step>/<path>`.
+   - **Human-facing (Decision 2 = yes):** also copy each harvested output → `result/<path>` for
+     the README. `check` never touches these.
 5. **Report:** N files blessed, M metric values written, any missing-output warnings.
 
 **After snapshot, committed:** `manifest.yaml` (frozen numbers) + `.plutus/expected/…` (frozen
-files) [+ optional `result/…`].
+files) + `result/…` (README view). `.plutus/results/` is gitignored and left as-is.
 
 **Delta from today's `scaffold_snapshot`:** it must harvest produced files from the **sandbox**
-(step 3e) rather than reading `result/` after `check` clobbered it. The bless logic (step 4) is
-already implemented; the change is the source of the files + running the real builder.
+into `.plutus/results/` (step 3e) and bless from there, rather than reading `result/` after
+`check` clobbered it. The bless logic (step 4) is already implemented; the changes are the source
+of the files (`.plutus/results/` not `repo_path / output`), running the real builder, and the
+added `result/` write.
 
 ---
 
@@ -265,63 +304,117 @@ already implemented; the change is the source of the files + running the real bu
 1. Load & validate the manifest.
 2. Build the image (same builder).
 3. Run the pipeline, steps in dependency order — **identical to §8 steps 3a–3e** (same sandbox,
-   same harvest, same propagation slot).
+   same harvest into `.plutus/results/`, same inter-step bus).
 4. **Verify** (instead of bless):
-   - **Metrics:** compare each harvested results.json value to `manifest.yaml`
-     `expected.metrics[].value` within tolerance.
-   - **Artifacts:** compare each harvested produced file to `.plutus/expected/<step>/<path>`
-     (byte_exact / json_numeric / visual). Missing reference = FAIL (byte/json) / SKIP (visual),
-     as today.
-   - **Read-only:** never write `result/` or `.plutus/expected/`.
+   - **Metrics:** compare each `.plutus/run/<step>/results.json` value to `manifest.yaml`
+     `expected.metrics[].value` within tolerance *(source path unchanged)*.
+   - **Artifacts:** compare each `.plutus/results/<step>/<path>` produced file to
+     `.plutus/expected/<step>/<path>` (byte_exact / json_numeric / visual). Missing reference =
+     FAIL (byte/json) / SKIP (visual), as today.
+   - **Read-only:** never write `result/` or `.plutus/expected/`. Only `.plutus/results/`
+     (gitignored) is touched, so the working tree stays clean.
 5. Emit the report; exit 0 / 1 / 2 as today.
 
 ---
 
-## 10. Open decisions
+## 10. Resolved decisions
 
-### Decision 1 — inter-step output propagation (the §4 caveat, now front-and-center)
-When `check` (and `snapshot`) can no longer write `result/`, how does step N+1 read step N's
-output? `snapshot` constrains this more than `check`: **on the first bless there is no committed
-groundtruth for intermediates yet**, so a derived-but-uncommitted intermediate *must* come from
-the earlier step's freshly harvested output.
+Both decisions are settled by naming the harvest buffer `.plutus/results/` and treating it as an
+ephemeral, gitignored per-run store distinct from the `.plutus/expected/` groundtruth.
 
-- **(a) Thread harvested outputs forward** — after step N runs, feed its harvested
-  `step.outputs` into step N+1's sandbox (alongside committed inputs). Reproduces the pipeline
-  end-to-end; works whether or not the intermediate is committed. More plumbing. **Superset —
-  the only option that always works for the first snapshot.**
-- **(b) Each step reads committed inputs only** — simpler, but step N+1 sees the *committed*
-  intermediate, not step N's fresh output; impossible for a not-yet-committed intermediate
-  (breaks the first snapshot). Only viable when every intermediate is committed source data
-  (e.g. Tier-1 shipped CSVs).
+### Decision 1 — inter-step output propagation → **(a) thread harvested outputs forward**
+When `check` (and `snapshot`) can no longer write `result/`, step N+1 reads step N's output from
+**`.plutus/results/`**: after step N is harvested, its `.plutus/results/<step>/` files are fed
+into step N+1's sandbox alongside the committed inputs. This reproduces the pipeline end-to-end
+and works whether or not the intermediate is committed — the only option that survives the
+**first** snapshot (when no committed groundtruth for intermediates exists yet).
 
-Whatever is chosen, `snapshot` and `check` must use the **same** mechanism (verify the way you
-blessed), and `result/` is **never** the inter-step channel — that role moves into the
-sandbox/harvest area.
+`snapshot` and `check` use the **same** mechanism (verify the way you blessed). `result/` is
+**never** the inter-step channel — that role lives in `.plutus/results/`.
 
-### Decision 2 — does `snapshot` also write `result/`?
-- **No `result/`:** `.plutus/expected/` is the only file store; README links into it. Zero
-  duplication; slightly less conventional README paths (linking inside a dot-dir).
-- **Yes `result/`:** `snapshot` writes human-facing copies for the README; `check` never touches
-  them. Convenience, at the cost of the (git-deduped) duplicate.
+*(Rejected — (b) each step reads committed inputs only:* simpler, but step N+1 would see the
+*committed* intermediate, not step N's fresh output, and it breaks the first snapshot for any
+not-yet-committed intermediate. Only viable when every intermediate is committed source data.)
+
+### Decision 2 — does `snapshot` also write `result/`? → **yes**
+`snapshot` writes human-facing copies into `result/` for the README (from `.plutus/results/`);
+`check` never touches them. The cost is a duplicate of the bytes already in `.plutus/expected/`,
+but git content-addresses identical blobs so the on-disk/repo cost is ~nil, and README paths stay
+conventional (`result/...`) rather than linking inside a dot-dir. `.plutus/results/` is added to
+the framework-managed `.dockerignore` baseline (so it never leaks into the next image build) and
+should be gitignored by the strategy author (so verification runs never dirty the working tree) —
+see §11.
 
 ---
 
-## 11. Implementation notes (once the decisions land)
+## 11. Implementation notes (decisions resolved)
 
 - `__main__.py` (`snapshot_cmd`, ~:457-499): drop the `--no-run` hard block; construct
   `make_image_builder()` + `DockerRunner()` and call `scaffold_snapshot(run_check_first=True, …)`.
   `--no-run` can remain as an explicit opt-out for the local-bytes path. **(L1)**
 - `spec/runtime/staging.py` `extract_outputs` (+ `orchestrator.py` `_run_step`): produced
-  `step.outputs` go to a sandbox/harvest area, not cwd; `.plutus/run/<step>/` bookkeeping still
-  returns. Implement Decision 1's propagation here. **(L2)**
-- `spec/runtime/orchestrator.py` `_compare_artifacts` (~:397-410): `produced_path` reads the
-  harvest area instead of `repo_path / r.path`. **(L2)**
-- `scaffold/snapshot.py`: harvest produced files from the sandbox/harvest area rather than
-  `repo_path / output`. Bless logic (metrics → manifest, files → `.plutus/expected/`) unchanged.
+  `step.outputs` *files* go to **`.plutus/results/<step>/`**, not cwd; `.plutus/run/<step>/`
+  bookkeeping (incl. results.json) still returns to cwd unchanged. The harvest is keyed by step
+  (`.plutus/results/<step>/<path>`), but injecting an earlier step's output into step N+1's staging
+  must remap back to the declared **`<path>`** (step code reads `data/x.parquet`, not
+  `.plutus/results/stepN/data/x.parquet`). Populate step N+1's staging from committed inputs **＋
+  earlier steps' `.plutus/results/`** (Decision 1 = option a). **(L2)**
+- `scaffold/check.py` `scaffold_check` (~:34-36): wipe **`.plutus/results/`** at run start too,
+  exactly as `.plutus/run/` is wiped now — a stale prior-run artifact must never be compared or
+  blessed. **(P2)**
+- `spec/runtime/orchestrator.py` `_compare_artifacts` (~:397-410): `produced_path` reads
+  **`.plutus/results/<step>/<path>`** instead of `repo_path / r.path`. `_compare_metrics` is
+  **unchanged** (still reads `.plutus/run/<step>/results.json`). **(L2)**
+- `scaffold/snapshot.py`: harvest artifact files from **`.plutus/results/`** rather than
+  `repo_path / output`; metric-bless still reads `.plutus/run/<step>/results.json` (unchanged);
+  files → `.plutus/expected/`, then **additionally copy files → `result/`** (Decision 2 = yes).
+- `spec/runtime/real_image_builder.py` `_DOCKERIGNORE_BASELINE` (~:58): add `.plutus/results/`
+  alongside `.plutus/run/` — it is the same prior-run ephemera, and must not leak into the next
+  image build context. **This does *not* break the inter-step bus**: `populate_staging` filters the
+  cwd→staging copy through `.dockerignore` (so the regular copy excludes it — no leak), while
+  Decision 1's propagation injects the prior step's `.plutus/results/` into the next sandbox
+  *explicitly*, on top of the filtered tree.
+- `.gitignore` (strategy repo, **author convention** — the framework does not write user
+  `.gitignore`s): authors should ignore `.plutus/results/` so verification runs never dirty the
+  working tree, same as `.plutus/run/`.
 - `spec/runtime/artifact_compare.py`: unchanged (compare modes are agnostic to where the two
   paths come from).
 - Tests: a `manager: uv` integration fixture that builds + runs a step end-to-end (the standing
   gap noted across 0.4.1–0.4.3) would also cover the read-only + harvest behavior.
+
+---
+
+## 12. As-built summary (2026-06-28)
+
+Landed in two increments, TDD throughout; full suite green except one unrelated pre-existing
+failure (`test_compare_charts`, fails on clean `main`).
+
+**L1 — in-container snapshot wired.**
+- `__main__.py` `snapshot_cmd`: dropped the `--no-run` hard block; without `--no-run` it builds
+  `make_image_builder()` + `DockerRunner()` and calls `scaffold_snapshot(run_check_first=True)`.
+  `--no-run` remains the local-bytes opt-out (`run_check_first=False`).
+- `real_image_builder.py`: `.plutus/results/` added to the `.dockerignore` baseline.
+
+**L2 — read-only verify + `.plutus/results/` harvest.**
+- `spec/runtime/staging.py`: `extract_outputs` harvests declared outputs to
+  `.plutus/results/<step>/` (was: working-tree root); `.plutus/run/<step>/` bookkeeping still
+  returns to cwd. New `stage_prior_results(repo, staging, step)` = the inter-step bus (remaps
+  `.plutus/results/<step>/<path>` → `staging/<path>`, respects `step.inputs`). New
+  `harvest_committed_outputs` mirrors `artifact_check` (shipped) outputs into the buffer for a
+  uniform compare.
+- `spec/runtime/orchestrator.py` `_run_step`: clears the per-step buffer; injects the bus after
+  `populate_staging`; input preflight now runs against the **staging sandbox** (committed inputs +
+  injected intermediates); output preflight runs against `.plutus/results/<step>/`.
+  `_compare_artifacts`: `produced_path` reads `.plutus/results/<step>/<path>`. `_compare_metrics`
+  unchanged (still `.plutus/run/<step>/results.json`).
+- `scaffold/check.py`: wipes `.plutus/results/` at run start (alongside `.plutus/run/`).
+- `scaffold/snapshot.py`: with `run_check_first=True`, blesses artifacts from `.plutus/results/`
+  into both `.plutus/expected/<step>/` (groundtruth) **and** the working tree (`result/`); with
+  `--no-run`, blesses from the author's local outputs as before. Metric-bless unchanged.
+- `preflight.py`, `artifact_compare.py`: **unchanged** — call sites just pass a different base path.
+
+**Author follow-up (not framework-enforced):** strategy repos should add `.plutus/results/` to
+their `.gitignore` (same as `.plutus/run/`).
 
 ---
 
@@ -337,14 +430,14 @@ curation (only declared outputs are blessed), and a clean git signal (the baseli
 
 **Q2. Is the `extract_outputs` writeback intentional, or could it go to a sandbox?** Intentional
 — it's the **inter-step data bus** (step N's output reaches step N+1 through cwd today), not just
-inspection. It can move to a sandbox (L2) but the bus role must be preserved (Decision 1); a
-blanket redirect would break multi-step pipelines.
+inspection. It moves to **`.plutus/results/`** (L2) with the bus role preserved (Decision 1 =
+option a: step N+1's sandbox is populated from committed inputs + earlier steps' `.plutus/results/`);
+a blanket redirect would break multi-step pipelines.
 
 **Q3. Is in-container `snapshot` on the roadmap? What blocks "real builder not wired"?** It's
 intended (the function defaults `run_check_first=True`); the CLI just doesn't wire
 `image_builder`/`runner`. Small, well-defined work — `check` already constructs them. Coupling:
-with L2, in-container snapshot must read produced bytes from the **sandbox/harvest area**, not
-cwd.
+with L2, in-container snapshot must read produced bytes from **`.plutus/results/`**, not cwd.
 
 **Q4. Would a single-folder model be acceptable?** No — the reference/produced distinction is
 intrinsic to golden-file verification, and the groundtruth must be snapshot-only (§6.2). Keep
