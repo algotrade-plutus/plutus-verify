@@ -23,9 +23,9 @@ from typing import Callable, Optional
 #     are recoverable; gitignored ≠ Docker-ignored)
 #   - VCS state (`.git/`, `.gitignore`) — leaks branch history
 #   - dev caches (venv, __pycache__, pytest/mypy/ruff caches) — bloat + noise
-#   - plutus-verify ephemera (`.plutus/run/`, `.plutus/build/`,
-#     `Dockerfile.generated`) — prior-run state leaking into the next image
-#     is the cache-leak failure mode that motivated this baseline
+#   - plutus-verify ephemera (`.plutus/run/`, `.plutus/results/`,
+#     `.plutus/build/`, `Dockerfile.generated`) — prior-run state leaking into
+#     the next image is the cache-leak failure mode that motivated this baseline
 #   - editor droppings (.DS_Store, .vscode/, .idea/)
 #
 # `.plutus/build/` carve-out: the framework stages its own SDK wheel at
@@ -56,6 +56,7 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .plutus/run/
+.plutus/results/
 .plutus/build/
 !.plutus/build/plutus_verify-*.whl
 .plutus/Dockerfile.generated

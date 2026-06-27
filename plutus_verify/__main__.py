@@ -478,18 +478,26 @@ def snapshot_cmd(
     """Capture step outputs into .plutus/expected/ and fill metric values."""
     from plutus_verify.scaffold.snapshot import scaffold_snapshot
 
+    image_builder = None
+    runner = None
     if not no_run:
-        click.echo(
-            "error: running check before snapshot requires --no-run for now (real builder not wired)",
-            err=True,
-        )
-        ctx = click.get_current_context()
-        ctx.exit(3)
-        return
+        # Bless from the same container `check` reproduces — construct the
+        # real builder + runner exactly as check_cmd does (kills L1: baselines
+        # captured from the laptop while check verifies in the container).
+        from plutus_verify.runner_docker import DockerRunner
+        from plutus_verify.spec.runtime import make_image_builder
+
+        image_builder = make_image_builder()
+        runner = DockerRunner()
+        click.echo("building image from .plutus/Dockerfile.generated...")
 
     res = scaffold_snapshot(
         Path(repo_path),
-        run_check_first=False,
+        run_check_first=not no_run,
+        image_builder=image_builder,
+        runner=runner,
+        vision_client=None,
+        secrets={},
         update_artifacts=not no_artifacts,
         update_metric_values=not no_metrics,
     )
