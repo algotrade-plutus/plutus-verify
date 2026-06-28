@@ -1,13 +1,13 @@
 ---
-name: plutus-transform
-description: Use when transforming a Plutus v1-ish trading-research repo into a v2-verifiable repo — recognises phrases like "make this repo plutus-compliant", "transform this into plutus v2", "integrate plutus-verify", "set up plutus check", "add reproducibility verification". Runs a four-phase workflow (Survey → Decide → Instrument → Verify) anchored on `plutus check` exiting 0, then auto-chains into the `plutus-scoring` skill for the rubric score and re-run command. For scoring an already-v2-compliant repo without transforming, invoke `plutus-scoring` directly.
+name: plutus-standardize
+description: Use when bringing a trading-research repo up to the Plutus Reproducibility Standard — recognises phrases like "make this repo plutus-compliant", "make this repo plutus-reproducible", "standardize this for plutus", "transform this into plutus v2", "integrate plutus-verify", "set up plutus check", "add reproducibility verification". Runs a four-phase workflow (Survey → Decide → Instrument → Verify) anchored on `plutus check` exiting 0, then auto-chains into the `plutus-scoring` skill for the rubric score and re-run command (which in turn chains into `plutus-document` to render the standard README). For scoring an already-compliant repo without standardizing, invoke `plutus-scoring` directly; to (re)generate just the standard README, invoke `plutus-document` directly.
 ---
 
-# plutus-transform
+# plutus-standardize
 
-Standardize the transformation of v1-ish Plutus trading-research repos into v2-verifiable repos. Anchored on `plutus check .` exiting 0 with all README-claimed metrics matching script output within declared tolerance.
+Bring a v1-ish Plutus trading-research repo up to the Plutus Reproducibility Standard: instrument the code, author the manifest, and make it verifiable. Anchored on `plutus check .` exiting 0 with all README-claimed metrics matching script output within declared tolerance.
 
-The workflow runs four sequential phases (Survey → Decide → Instrument → Verify), then a short Phase 4.5 (Transform summary), then Phase 6 (Consolidate knowledge — silent unless this session required substantive deviation from the documented workflow), then a final hand-off step that invokes the [`plutus-scoring`](../plutus-scoring/SKILL.md) skill for the compliance score and re-run command. Phase 2 is the only interactive phase; the rest run to completion unless a hard error appears. Body targets `plutus-verify` 0.2.7+; legacy-version deltas live in `references/v<minor>.md`.
+The workflow runs four sequential phases (Survey → Decide → Instrument → Verify), then a short Phase 4.5 (Transform summary), then Phase 6 (Consolidate knowledge — silent unless this session required substantive deviation from the documented workflow), then a final hand-off step that invokes the [`plutus-scoring`](../plutus-scoring/SKILL.md) skill for the compliance score and re-run command (scoring then chains into [`plutus-document`](../plutus-document/SKILL.md) to render the standard README). Phase 2 is the only interactive phase; the rest run to completion unless a hard error appears. Body targets `plutus-verify` 0.2.7+; legacy-version deltas live in `references/v<minor>.md`.
 
 ## Pre-flight (before Phase 1)
 
@@ -159,7 +159,7 @@ If **any** of them fired, write `.plutus/skill-feedback.md` with one section per
 - **What the Skill's current shape said** — the closest documented gotcha / decision / template / version-note, and *why* it didn't fit
 - **Draft promotion** — a ready-to-paste block (a new G8 in `known-gotchas.md` format, or a 4th option for D1 in `decision-tree.md` format, etc.) the operator can lift into the Skill verbatim if they choose
 
-Present the file path and a one-paragraph summary to the user, then continue to the final hand-off. The user decides whether to harness the findings (fold them into `~/.claude/skills/plutus-transform/references/` in a follow-up session) or leave them as repo-local notes. The Skill does not auto-promote.
+Present the file path and a one-paragraph summary to the user, then continue to the final hand-off. The user decides whether to harness the findings (fold them into `~/.claude/skills/plutus-standardize/references/` in a follow-up session) or leave them as repo-local notes. The Skill does not auto-promote.
 
 This phase is harness-able: across N transformed repos, `find . -name skill-feedback.md` surfaces every divergence the Skill has ever encountered. Patterns that repeat across multiple repos are the strongest candidates for promotion.
 

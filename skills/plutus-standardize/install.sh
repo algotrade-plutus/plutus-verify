@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 SKILL_SRC="$(cd "$(dirname "$0")" && pwd)"
-TARGET="$HOME/.claude/skills/plutus-transform"
+TARGET="$HOME/.claude/skills/plutus-standardize"
 mkdir -p "$HOME/.claude/skills"
 if [[ -L "$TARGET" ]]; then
   echo "symlink already exists: $TARGET -> $(readlink "$TARGET")"
