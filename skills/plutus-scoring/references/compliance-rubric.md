@@ -2,7 +2,7 @@
 
 The 50/25/10/15 scoring model the `plutus-scoring` Skill applies in
 its Score phase. Score is rounded to the nearest 5%. The same rubric
-is invoked automatically by `plutus-transform` as the final hand-off
+is invoked automatically by `plutus-standardize` as the final hand-off
 step after a clean transform.
 
 > Source: [docs/others/zbounce-v1-to-v2-upgrade.md](../../../docs/others/zbounce-v1-to-v2-upgrade.md) §7.
@@ -50,6 +50,6 @@ The Skill emits, in order:
 2. **Total**, rounded to 5%.
 3. **"Cheapest paths to push the score higher"** — concrete, ranked suggestions (≤4 items).
 
-When the Skill is invoked as a chain from `plutus-transform`, item 4 also fires:
+When the Skill is invoked as a chain from `plutus-standardize`, item 4 also fires:
 
 4. **"Architectural smells we worked around but didn't fix"** — pointers for a separate maintainer-side PR. Detection only; never silent fix. Sourced from the transform skill's Phase 4.5 summary; not applicable to standalone scoring invocations.

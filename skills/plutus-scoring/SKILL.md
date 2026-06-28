@@ -1,13 +1,13 @@
 ---
 name: plutus-scoring
-description: Use when scoring a Plutus-v2 compliant repo against the compliance rubric — recognises phrases like "score this repo's plutus compliance", "what's our plutus score", "rate this repo for plutus-verify", "how plutus-compliant is this", "plutus compliance score". Emits per-bucket scores (50/25/10/15), ranked improvement paths, and a copy-pasteable re-run command. Standalone-invokable on any v2 repo, or auto-chained from `plutus-transform` after a clean transform.
+description: Use when scoring a Plutus-v2 compliant repo against the compliance rubric — recognises phrases like "score this repo's plutus compliance", "what's our plutus score", "rate this repo for plutus-verify", "how plutus-compliant is this", "plutus compliance score". Emits per-bucket scores (50/25/10/15), ranked improvement paths, and a copy-pasteable re-run command. Standalone-invokable on any v2 repo, or auto-chained from `plutus-standardize` after a clean transform.
 ---
 
 # plutus-scoring
 
 Apply the 50/25/10/15 PLUTUS compliance rubric to a v2-compliant repo and produce three actionable outputs: a per-bucket score, ranked improvement paths, and a re-run command the maintainer can use to re-verify any time.
 
-Standalone-invokable on any v2 repo. Also auto-chained from [`plutus-transform`](../plutus-transform/SKILL.md) as its final hand-off step after a clean transform — the chain passes context via the transform skill's Phase 4.5 summary (architectural smells worked around but not fixed).
+Standalone-invokable on any v2 repo. Also auto-chained from [`plutus-standardize`](../plutus-standardize/SKILL.md) as its final hand-off step after a clean transform — the chain passes context via the transform skill's Phase 4.5 summary (architectural smells worked around but not fixed).
 
 ## Pre-flight (before Phase 1)
 
@@ -17,9 +17,9 @@ Standalone-invokable on any v2 repo. Also auto-chained from [`plutus-transform`]
    from plutus_verify.spec.loader import load_manifest
    load_manifest("<repo>/.plutus/manifest.yaml")
    ```
-   If missing or invalid, fail fast: "This repo is not v2-compliant — no loadable `.plutus/manifest.yaml`. Run `plutus-transform` to bring it up to v2, or `plutus init` to scaffold from scratch."
+   If missing or invalid, fail fast: "This repo is not v2-compliant — no loadable `.plutus/manifest.yaml`. Run `plutus-standardize` to bring it up to v2, or `plutus init` to scaffold from scratch."
 3. **Probe `plutus_verify` version.** `python -c "import plutus_verify; print(plutus_verify.__version__)"`. If a matching `references/v<minor>.md` exists, load it for scoring nuances (e.g., 0.2.7+ treats `WARN byte_identical` as a Reproducible pass).
-4. **Detect chain context.** If invoked from `plutus-transform`, the parent skill writes a brief "Phase 4.5 summary" into the transcript (architectural smells worked around, decisions made). Capture this so Phase 2 can surface it in item 4 of the rubric output. When invoked standalone, item 4 is omitted.
+4. **Detect chain context.** If invoked from `plutus-standardize`, the parent skill writes a brief "Phase 4.5 summary" into the transcript (architectural smells worked around, decisions made). Capture this so Phase 2 can surface it in item 4 of the rubric output. When invoked standalone, item 4 is omitted.
 
 ## Phase 1 — Score
 
@@ -29,7 +29,7 @@ For each bucket (Reproducible 50, Tidy 25, Standardized 10, Innovative 15):
 
 1. Read the rubric's bucket-by-bucket scoring guide.
 2. Inspect the target repo against the criteria:
-   - **Reproducible** — does `plutus check` exit 0? Were any manifest-side workarounds applied (network routing, secret routing to non-DB steps, etc.)? Were any tracked config files modified? Use the `plutus check` output (run it if necessary, or rely on the chain-context transcript from `plutus-transform`).
+   - **Reproducible** — does `plutus check` exit 0? Were any manifest-side workarounds applied (network routing, secret routing to non-DB steps, etc.)? Were any tracked config files modified? Use the `plutus check` output (run it if necessary, or rely on the chain-context transcript from `plutus-standardize`).
    - **Tidy** — read the README; check for the ~5 sub-points (structure, `.env.example`, documented inputs, parameter pipeline accuracy, Python pin + CI).
    - **Standardized** — check for the canonical 4-step shape, parameter externalization, predictable chart paths, no module-level side effects.
    - **Innovative** — survey the metric set and analytical surface. Novel metrics or non-textbook strategy logic earn this bucket.
@@ -45,7 +45,7 @@ Concrete, ranked, ≤4 items. Each item:
 
 Prefer cheap wins first. A 5-point bump in Tidy from quoting placeholders in `.env.example` outranks a 15-point Innovative bump that needs a research effort.
 
-If invoked as a chain from `plutus-transform`, also emit item 4:
+If invoked as a chain from `plutus-standardize`, also emit item 4:
 
 - **"Architectural smells we worked around but didn't fix"** — from the parent skill's Phase 4.5 summary. These are detection-only pointers; the Skill never silently fixes them. Example: "Module-level DB connection at `database/data_service.py:102` — manifest workaround routes DB secrets to backtest steps; clean fix is to make the connection lazy."
 
@@ -63,7 +63,23 @@ plutus check . --secrets-from-env
 echo "exit=$?"
 ```
 
-Fill `<BRANCH>` from `git branch --show-current` (or the parent skill's transform branch if chained). Fill `<SECRET_KEY_N>` from the manifest's `secrets[].key`. If the manifest declares no secrets, drop the `eval` line. If `data_sources.processed` covers everything (no network needed), `--secrets-from-env` can also be dropped.
+Fill `<BRANCH>` from `git branch --show-current` (or the parent skill's standardize branch if chained). Fill `<SECRET_KEY_N>` from the manifest's `secrets[].key`. If the manifest declares no secrets, drop the `eval` line. If `data_sources.processed` covers everything (no network needed), `--secrets-from-env` can also be dropped.
+
+## Hand-off — document the repo
+
+After the score, improvement paths, and re-run command are emitted, invoke the
+[`plutus-document`](../plutus-document/SKILL.md) skill to render/refresh the repo's
+standard Plutus-Reproducible `README.md` from the verified groundtruth. Pass it:
+
+- the **rounded compliance score** (for the README's PLUTUS score badge);
+- the chain origin — the `plutus-standardize` Decisions block and Phase 4.5 summary
+  if this run was chained from a standardize session (so `plutus-document` can shape
+  the data section and surface worked-around smells appropriately).
+
+The hand-off is an invocation of a separate skill — `plutus-scoring` itself stays
+read-only; `plutus-document` is the only step in the chain that writes the working
+tree (the `README.md`), and the author reviews + commits it. Skip the hand-off only
+if the operator explicitly asked for the score alone.
 
 ## Verification before completion
 
@@ -73,7 +89,7 @@ Mechanical checks before declaring done:
 - Total score is emitted, rounded to 5%.
 - Improvement paths are concrete (each names a file, line, or specific change) and ranked by cost.
 - Re-run command block is visible in the transcript with concrete `<BRANCH>` and `<SECRET_KEY_N>` substitutions made.
-- If chained from `plutus-transform`, item 4 (worked-around smells) is also present.
+- If chained from `plutus-standardize`, item 4 (worked-around smells) is also present.
 
 If any check fails, do **not** declare done. Re-read the target's manifest / source state and re-score.
 
