@@ -7,7 +7,7 @@ description: Use when bringing a trading-research repo up to the Plutus Reproduc
 
 Bring a v1-ish Plutus trading-research repo up to the Plutus Reproducibility Standard: instrument the code, author the manifest, and make it verifiable. Anchored on `plutus check .` exiting 0 with all README-claimed metrics matching script output within declared tolerance.
 
-The workflow runs four sequential phases (Survey → Decide → Instrument → Verify), then a short Phase 4.5 (Transform summary), then Phase 6 (Consolidate knowledge — silent unless this session required substantive deviation from the documented workflow), then a final hand-off step that invokes the [`plutus-scoring`](../plutus-scoring/SKILL.md) skill for the compliance score and re-run command (scoring then chains into [`plutus-document`](../plutus-document/SKILL.md) to render the standard README). Phase 2 is the only interactive phase; the rest run to completion unless a hard error appears. Body targets `plutus-verify` 0.2.7+; legacy-version deltas live in `references/v<minor>.md`.
+The workflow runs four sequential phases (Survey → Decide → Instrument → Verify), then a short Phase 4.5 (Transform summary), then Phase 6 (Consolidate knowledge — silent unless this session required substantive deviation from the documented workflow), then a final hand-off step that invokes the [`plutus-scoring`](../plutus-scoring/SKILL.md) skill for the compliance score and re-run command (scoring then chains into [`plutus-document`](../plutus-document/SKILL.md) to render the standard README). Phase 2 is the only interactive phase; the rest run to completion unless a hard error appears. Body targets `plutus-verify` 0.2.7+; legacy-version deltas live in `references/v<minor>.md`. On **0.5.0+** load [`references/v0.5.0.md`](references/v0.5.0.md) — `check` is read-only (produced artifacts → gitignored `.plutus/results/`), `snapshot` runs in-container by default, data sources cache in `.plutus/cache/`, and `env.install_project` (D6) installs the repo's own package.
 
 ## Pre-flight (before Phase 1)
 
@@ -76,7 +76,7 @@ Sequential, no further user interaction except the "boundary" cases below.
 
    a. **Metric values from README.** `expected.metrics[].value` entries come verbatim from the README's reported numbers (the public claim the verifier exists to check). Match metric names by canonical snake_case (Sharpe → `sharpe_ratio`, etc.). For D4 = path B, defer values to Phase 4's smoke-run output.
 
-   b. **Chart baselines from README.** For each declared `expected.artifacts[].path`, search the README for a chart reference at that path — markdown `![alt](path)` or HTML `<img src="path">`. If the referenced file exists at `<repo>/<path>`, copy it (mechanical `cp`) into `.plutus/expected/<step_id>/<path>`. This captures the v1-published chart as the verification baseline **before any new execution overwrites the file**. The operation is symmetric with sub-step (a): both extract README-claimed truth into the verification spec, at the same point in the workflow. Declared artifacts with no README reference: leave the baseline empty — the comparator's missing-expected SKIP path handles it. For D4 = path B, defer the baseline to Phase 4's smoke-run output (via `plutus snapshot`).
+   b. **Chart baselines from README.** For each declared `expected.artifacts[].path`, search the README for a chart reference at that path — markdown `![alt](path)` or HTML `<img src="path">`. If the referenced file exists at `<repo>/<path>`, copy it (mechanical `cp`) into `.plutus/expected/<step_id>/<path>`. This captures the v1-published chart as the verification baseline. (On **0.5.0+** `check` is read-only — produced charts land in `.plutus/results/`, not over `result/` — so the old "copy before a run overwrites it" race is gone; the copy is still needed because `.plutus/expected/` is the baseline `check` compares against. See `references/v0.5.0.md`.) The operation is symmetric with sub-step (a): both extract README-claimed truth into the verification spec, at the same point in the workflow. Declared artifacts with no README reference: leave the baseline empty — the comparator's missing-expected SKIP path handles it. For D4 = path B, defer the baseline to Phase 4's smoke-run output (via `plutus snapshot`).
 
 6. **Validate** the manifest:
    ```python
@@ -90,11 +90,15 @@ Sequential, no further user interaction except the "boundary" cases below.
 
    # plutus-verify ephemera
    .plutus/run/
+   .plutus/results/      # 0.5.0 read-only-check harvest buffer (produced artifacts)
+   .plutus/cache/        # 0.5.0 data-source download cache
    .plutus/build/
    .plutus/Dockerfile.generated
    .plutus/manifest.yaml.draft
    .plutus/manifest_TODO.md
    ```
+   `.plutus/results/` and `.plutus/cache/` are load-bearing on 0.5.0+: `check` is
+   read-only only if they're ignored (see `references/v0.5.0.md`).
 
 **Boundary asks** (require user confirmation before applying):
 - Porting dependencies to uv — writing `pyproject.toml`/`uv.lock` (or importing from `requirements.txt`) and committing the lockfile (D5).
@@ -110,9 +114,16 @@ Sequential, no further user interaction except the "boundary" cases below.
    python <script>.py
    ls .plutus/run/<step_id>/results.json
    ```
-   Eyeball values against README (path A) or capture for filling the manifest (path B). Note: the smoke-run overwrites any chart files at the script's declared output paths — for D4 = path A, Phase 3 step 5b already snapshotted the v1 versions to `.plutus/expected/`, so this overwrite is fine.
+   Eyeball values against README (path A) or capture for filling the manifest (path B). Note: a host smoke-run overwrites chart files at the script's declared output paths — for D4 = path A, Phase 3 step 5b already snapshotted the v1 versions to `.plutus/expected/`, so this is fine. (In-container `check`/`snapshot` on 0.5.0+ never overwrite `result/`; this caveat is only about the optional *host* smoke-run.)
 
-2. **For D4 = path B only**: `plutus snapshot --no-run --no-metrics .` to capture the smoke-run's output as the verification baseline (D4 path B means "script is truth"). Skip for D4 = path A — the baseline was already copied from README references in Phase 3 step 5b.
+2. **For D4 = path B only**: capture the baseline from the script's output. On
+   **0.5.0+** prefer in-container `plutus snapshot .` — it builds + runs each step in
+   the container, then writes `.plutus/expected/` (groundtruth) **and** `result/`
+   (human-facing), so the baseline matches the env `check` reproduces. (`plutus
+   snapshot --no-run --no-metrics .` remains the local-bytes opt-out when a host
+   smoke-run is the source of truth.) Skip for D4 = path A — the baseline was already
+   copied from README references in Phase 3 step 5b. Note: `plutus init` scaffolds
+   `.dockerignore` on 0.5.0+, so the skill no longer needs to hand-write it.
 
 3. **`plutus check . --secrets-from-env`** and confirm exit=0. Capture full output. On 0.2.7+, expect `ok byte_identical` lines for deterministic charts and `WARN byte_identical` lines for charts with timestamp / font / floating-point jitter — both are non-blocking.
 
