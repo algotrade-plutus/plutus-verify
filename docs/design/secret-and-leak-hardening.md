@@ -149,7 +149,7 @@ host repo:  .env (DB creds) , data/cache/*.parquet (stale) , source , requiremen
 
 The arc was driven by a real DB-backed student strategy,
 `cs408-2026/Group09-BuyHighSellLow`, used as a **test-bench**. Each release, the
-`plutus-transform` skill ran against it and the operator wrote findings to
+`plutus-standardize` skill ran against it and the operator wrote findings to
 `<repo>/.plutus/skill-feedback.md`. Five consecutive iterations (0.2.7, 0.2.8,
 0.2.8 cleanroom, 0.2.9, 0.2.10) each surfaced one real upstream defect or doc
 gap — until 0.2.10, where the only remaining gap was a Skill-doc tightening
@@ -207,7 +207,7 @@ to surface the next class of gaps — Tier 3 has been the lens for this entire a
 
 - [authoring-tools](../feature/authoring-tools.md) — `plutus check` (where wipe-on-start and staging run).
 - [v2-manifest](../feature/v2-manifest.md) — `inputs`/`outputs`/`secrets` semantics.
-- [plutus-transform-skill](../feature/plutus-transform-skill.md) — gotchas G11/G12 that surfaced these issues.
+- [plutus-standardize-skill](../feature/plutus-standardize-skill.md) — gotchas G11/G12 that surfaced these issues.
 
 ## Source Materials
 

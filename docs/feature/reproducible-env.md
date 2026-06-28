@@ -104,7 +104,7 @@ env:
 ## Related Features
 
 - [v2-manifest](v2-manifest.md) — the full manifest/env schema and the results contract.
-- [plutus-transform-skill](plutus-transform-skill.md) — its D5 decision ports an existing repo to the uv-locked env.
+- [plutus-standardize-skill](plutus-standardize-skill.md) — its D5 decision ports an existing repo to the uv-locked env.
 
 ## Source Materials
 

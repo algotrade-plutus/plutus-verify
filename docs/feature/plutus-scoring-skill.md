@@ -20,14 +20,14 @@ It is **read-only**: it does not modify the repo and does not itself run
 `plutus check`. The score is derived from inspecting the manifest, scripts, and
 README (plus any `plutus check` output already in the transcript). It can be
 invoked standalone on any v2 repo, or it runs automatically at the end of
-[`plutus-transform`](plutus-transform-skill.md).
+[`plutus-standardize`](plutus-standardize-skill.md).
 
 ## How It Works
 
 A **pre-flight** confirms the repo path and v2-compliance (loads
-`.plutus/manifest.yaml`, failing fast toward `plutus-transform`/`plutus init` if
+`.plutus/manifest.yaml`, failing fast toward `plutus-standardize`/`plutus init` if
 it's missing or invalid), probes the `plutus_verify` version, and detects
-whether it was chained from `plutus-transform`. Then three phases:
+whether it was chained from `plutus-standardize`. Then three phases:
 
 ### Phase 1 — Score
 
@@ -40,7 +40,7 @@ A ranked list of ≤4 concrete actions. Each names a specific bucket + score
 delta, maps to a file/line/setting, and estimates cost ("one-line change" /
 "ten-minute edit" / "PR-scale rework"). Cheap wins are ranked first. A fourth
 item — "architectural smells we worked around but didn't fix" — only appears
-when chained from `plutus-transform` (which passes them in via its Phase 4.5
+when chained from `plutus-standardize` (which passes them in via its Phase 4.5
 summary).
 
 ### Phase 3 — Re-run command
@@ -84,7 +84,7 @@ and the re-run command.
 
 ### Auto-chained
 
-Running `/plutus-transform` to a clean `plutus check` automatically hands off
+Running `/plutus-standardize` to a clean `plutus check` automatically hands off
 into `plutus-scoring` in the same session, with the transform's worked-around
 smells surfaced as improvement-path item 4.
 
@@ -93,13 +93,13 @@ smells surfaced as improvement-path item 4.
 - **Read-only and inference-based** — it does not run `plutus check`; the
   "Reproducible" score reflects check output already in the transcript (or the
   repo's evident state). The re-run command is a recipe to confirm later.
-- **Requires a valid v2 manifest** — fails fast toward `plutus-transform` /
+- **Requires a valid v2 manifest** — fails fast toward `plutus-standardize` /
   `plutus init` if the repo isn't v2-compliant.
 - **Item 4 of improvement paths is chain-only** — omitted on standalone runs.
 
 ## Related Features
 
-- [plutus-transform-skill](plutus-transform-skill.md) — the transformer that chains into this skill.
+- [plutus-standardize-skill](plutus-standardize-skill.md) — the transformer that chains into this skill.
 - [authoring-tools](authoring-tools.md) — `plutus check`, whose verdict feeds the Reproducible bucket.
 
 ## Source Materials

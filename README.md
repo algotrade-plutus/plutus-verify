@@ -220,15 +220,21 @@ on that step — see [docs/feature/v2-manifest.md](docs/feature/v2-manifest.md).
 
 ## Scoring & skills
 
-Two Claude Code skills (under [`skills/`](skills/)) wrap the workflow:
+Three Claude Code skills (under [`skills/`](skills/)) wrap the workflow, chained
+**`plutus-standardize` → `plutus-scoring` → `plutus-document`**:
 
-- **`plutus-transform`** — turns a research repo into a verifiable one via a
+- **`plutus-standardize`** — turns a research repo into a verifiable one via a
   four-phase workflow (Survey → Decide → Instrument → Verify), anchored on
   `plutus check` exiting 0, then auto-chains into scoring.
-  ([`docs/feature/plutus-transform-skill.md`](docs/feature/plutus-transform-skill.md))
+  ([`docs/feature/plutus-standardize-skill.md`](docs/feature/plutus-standardize-skill.md))
 - **`plutus-scoring`** — scores a compliant repo against the compliance rubric and
-  emits per-bucket scores, ranked improvement paths, and a re-run command.
+  emits per-bucket scores, ranked improvement paths, and a re-run command, then
+  hands off to documentation.
   ([`docs/feature/plutus-scoring-skill.md`](docs/feature/plutus-scoring-skill.md))
+- **`plutus-document`** — renders the standard Plutus-Reproducible `README.md` from
+  the verified groundtruth (metric tables, chart embeds, reproduction block) plus
+  strategy narrative. Chained after scoring, or run standalone to refresh the README
+  after a re-snapshot.
 
 The rubric has four weighted buckets summing to 100%: **Reproducible (50)** —
 `plutus check` exit 0 within tolerance · **Tidy / well-documented (25)** ·

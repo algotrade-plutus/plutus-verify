@@ -91,7 +91,7 @@ cd ./LegacyStrategy && plutus check . --secrets-from-env
 
 - [v2-manifest](v2-manifest.md) — the manifest format the draft targets.
 - [authoring-tools](authoring-tools.md) — `bootstrap` (the instrumented-repo on-ramp), `check`, `snapshot`.
-- [plutus-transform-skill](plutus-transform-skill.md) — the guided, end-to-end transformation workflow.
+- [plutus-standardize-skill](plutus-standardize-skill.md) — the guided, end-to-end transformation workflow.
 
 ## Source Materials
 

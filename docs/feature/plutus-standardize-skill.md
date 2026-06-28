@@ -1,15 +1,15 @@
 ---
-feature: plutus-transform-skill
+feature: plutus-standardize-skill
 date: 2026-06-01
 version: 1.0
 status: current
 ---
 
-# `plutus-transform` Skill
+# `plutus-standardize` Skill
 
 ## What It Does
 
-`plutus-transform` is a Claude Code skill that drives the **end-to-end
+`plutus-standardize` is a Claude Code skill that drives the **end-to-end
 transformation** of a v1-ish Plutus trading-research repo into a v2-verifiable
 repo. Where the `plutus` CLI gives you the individual tools (`init`, `transfer`,
 `bootstrap`, `check`), this skill orchestrates them into a guided workflow that
@@ -110,11 +110,11 @@ modes — **G1–G7, plus G11 and G12** (there is no G8/G9/G10):
 Install once (creates a symlink, so in-repo edits propagate immediately):
 
 ```bash
-bash skills/plutus-transform/install.sh
+bash skills/plutus-standardize/install.sh
 bash skills/plutus-scoring/install.sh    # the companion it chains into
 ```
 
-Then invoke with `/plutus-transform` or any trigger phrase, pointing at the repo.
+Then invoke with `/plutus-standardize` or any trigger phrase, pointing at the repo.
 
 ## Limitations & Caveats
 
@@ -135,7 +135,7 @@ Then invoke with `/plutus-transform` or any trigger phrase, pointing at the repo
 
 ## Source Materials
 
-- Code: `skills/plutus-transform/SKILL.md`, `skills/plutus-transform/references/`
-- Report: `docs/completion-report/2026-05-27-plutus-transform-skill.md`,
+- Code: `skills/plutus-standardize/SKILL.md`, `skills/plutus-standardize/references/`
+- Report: `docs/completion-report/2026-05-27-plutus-standardize-skill.md`,
   `docs/completion-report/2026-06-01-v0.2.x-leak-closure-arc-pause.md`
 </content>

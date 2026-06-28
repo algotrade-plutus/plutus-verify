@@ -11,16 +11,20 @@ status: current
 
 The skill layer is the agent-facing front-end to `plutus-verify`. The CLI
 provides primitives (`init`, `transfer`, `bootstrap`, `check`, `snapshot`); the
-two Claude Code skills — **`plutus-transform`** and **`plutus-scoring`** —
-orchestrate those primitives into guided, end-to-end workflows that a human (or
-Claude) can invoke conversationally and that converge on concrete, checkable
-outcomes.
+three Claude Code skills — **`plutus-standardize`**, **`plutus-scoring`**, and
+**`plutus-document`** — orchestrate those primitives into guided, end-to-end
+workflows that a human (or Claude) can invoke conversationally and that converge on
+concrete, checkable outcomes.
 
-The two skills form a pipeline of their own: `plutus-transform` makes a repo
+The skills form a pipeline of their own: `plutus-standardize` makes a repo
 v2-verifiable and ends with `plutus check .` exiting 0, then **auto-chains** into
 `plutus-scoring`, which applies the 50/25/10/15 compliance rubric and emits a
-score + improvement paths + a re-run command. They were deliberately split (in
-0.2.7) so that scoring can also run standalone on any already-compliant repo.
+score + improvement paths + a re-run command, then chains into `plutus-document`,
+which renders the standard Plutus-Reproducible `README.md` from the verified
+groundtruth + narrative (score badge from scoring). Chain order:
+**standardize → scoring → document**. The skills were deliberately split (scoring in
+0.2.7, document in 0.5.0) so that scoring can run standalone on any already-compliant
+repo and document can re-render the README after a re-snapshot.
 
 This layer also doubles as the framework's **test harness**: running the skills
 against real downstream repos is how upstream defects were surfaced across the
@@ -32,8 +36,8 @@ v0.2.5→0.2.10 arc (see [secret-and-leak-hardening](secret-and-leak-hardening.m
 trigger phrase / slash command
         │
         ▼
-plutus-transform  ── Pre-flight ── Survey ── Decide ── Instrument ── Verify
-   (skills/plutus-transform/SKILL.md)   │       (D1-D5)   (pv.step,    (plutus check
+plutus-standardize  ── Pre-flight ── Survey ── Decide ── Instrument ── Verify
+   (skills/plutus-standardize/SKILL.md)   │       (D1-D5)   (pv.step,    (plutus check
         │                          parallel Explore        manifest)    exit 0)
         │                          + AskUserQuestion            │
         │                                                  Phase 4.5 summary
@@ -48,7 +52,7 @@ both: ~/.claude/skills/<skill> ── symlink ──► repo skills/<skill>/   (
 
 ### Components
 
-#### `plutus-transform` — `skills/plutus-transform/`
+#### `plutus-standardize` — `skills/plutus-standardize/`
 - **Purpose:** transform a v1-ish repo into a v2-verifiable repo.
 - **Structure:** Pre-flight + four sequential phases (Survey → Decide →
   Instrument → Verify) + Phase 4.5 (transform summary) + Phase 6 (knowledge
@@ -72,7 +76,7 @@ a symlink, in-repo edits propagate immediately on the next session — no re-ins
 
 - **Converge on a checkable outcome.** Transform isn't "done" until
   `plutus check` exits 0 and the score is emitted.
-- **One interactive phase.** `plutus-transform` asks all its questions in a
+- **One interactive phase.** `plutus-standardize` asks all its questions in a
   single Phase-2 `AskUserQuestion`; everything else runs to completion modulo
   boundary asks.
 - **Manifest-side fixes only.** The skill never "fixes" a repo by loosening
@@ -89,7 +93,7 @@ a symlink, in-repo edits propagate immediately on the next session — no re-ins
 - **Context:** transformation and scoring are distinct concerns with different
   invocation patterns — you transform once, but you might score repeatedly or
   score a repo someone else made v2-compliant.
-- **Decision:** two skills; `plutus-transform` auto-chains into `plutus-scoring`
+- **Decision:** two skills; `plutus-standardize` auto-chains into `plutus-scoring`
   via the `Skill` tool at the end, passing context through the Phase 4.5 summary
   (worked-around smells become scoring improvement-path item 4).
 - **Rationale:** scoring is independently useful and read-only; transformation is
@@ -124,11 +128,11 @@ a symlink, in-repo edits propagate immediately on the next session — no re-ins
 
 ## Error Handling & Edge Cases
 
-- **Pre-flight gates.** `plutus-transform` warns on uncommitted changes and
+- **Pre-flight gates.** `plutus-standardize` warns on uncommitted changes and
   probes that `plutus_verify` is importable. `plutus-scoring` fails fast toward
-  `plutus-transform`/`plutus init` if the repo isn't v2-compliant.
+  `plutus-standardize`/`plutus init` if the repo isn't v2-compliant.
 - **Auto-chain failure.** If `plutus-scoring` can't be invoked (e.g. not
-  installed), `plutus-transform` surfaces `bash skills/plutus-scoring/install.sh`
+  installed), `plutus-standardize` surfaces `bash skills/plutus-scoring/install.sh`
   and stops.
 - **Boundary asks.** Mutating actions outside the manifest (rewriting dependency
   files, quoting `.env` placeholders, deleting module-level connections) require
@@ -144,7 +148,7 @@ a symlink, in-repo edits propagate immediately on the next session — no re-ins
 The skills' most important architectural role is as a closed feedback loop with
 real downstream repos. The arc that hardened the framework
 (see [secret-and-leak-hardening](secret-and-leak-hardening.md)) was driven by
-running `plutus-transform` against `cs408-2026/Group09-BuyHighSellLow` once per
+running `plutus-standardize` against `cs408-2026/Group09-BuyHighSellLow` once per
 release and capturing `.plutus/skill-feedback.md`. Each iteration's feedback was
 the test-bench output that drove the next release. The
 [skill feedback test-bench](../../memory) is the standing channel for this:
@@ -162,14 +166,14 @@ treat each issue as either an upstream fix or a documented known-limitation.
 
 ## Features Covered
 
-- [plutus-transform-skill](../feature/plutus-transform-skill.md) — the transform workflow + gotcha catalogue.
+- [plutus-standardize-skill](../feature/plutus-standardize-skill.md) — the transform workflow + gotcha catalogue.
 - [plutus-scoring-skill](../feature/plutus-scoring-skill.md) — the rubric scorer.
 - [authoring-tools](../feature/authoring-tools.md) — the CLI primitives the skills orchestrate.
 
 ## Source Materials
 
-- Code: `skills/plutus-transform/`, `skills/plutus-scoring/` (SKILL.md + references)
-- Reports: `docs/completion-report/2026-05-27-plutus-transform-skill.md`,
+- Code: `skills/plutus-standardize/`, `skills/plutus-scoring/` (SKILL.md + references)
+- Reports: `docs/completion-report/2026-05-27-plutus-standardize-skill.md`,
   `docs/completion-report/2026-05-27-v0.2.7-byte-fallback-and-skill-split.md`,
   `docs/completion-report/2026-06-01-v0.2.x-leak-closure-arc-pause.md`
 </content>

@@ -171,7 +171,7 @@ git diff .plutus/                  # review, then commit — the commit is the c
 
 - [v2-manifest](v2-manifest.md) — the manifest these tools produce and verify.
 - [legacy-migration](legacy-migration.md) — `plutus transfer` for README repos.
-- [plutus-transform-skill](plutus-transform-skill.md) — the Claude skill that drives this whole workflow.
+- [plutus-standardize-skill](plutus-standardize-skill.md) — the Claude skill that drives this whole workflow.
 
 ## Source Materials
 
