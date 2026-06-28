@@ -4,6 +4,66 @@ All notable changes to `plutus-verify` are recorded here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 project is pre-1.0 and uses calendar-driven minor bumps.
 
+## [0.5.0] — 2026-06-28
+
+Reshapes the `snapshot` / `check` data flow into a clean two-verb model, makes
+`check` non-destructive, adds opt-in installable-package support, and adopts uv for
+development. Supersedes 0.4.3 (0.4.4–0.4.6 were unreleased).
+
+### Changed — `check` is read-only; `snapshot` runs in-container
+
+- Produced artifacts are harvested to the gitignored `.plutus/results/<step>/` and
+  compared there — `check` never overwrites the author's committed `result/` files.
+  Earlier steps reach later ones through that same buffer (the inter-step data bus),
+  so multi-step pipelines reproduce end-to-end without writing the working tree.
+- `plutus snapshot` builds and runs **in-container** by default (the same
+  environment `check` reproduces), then writes the groundtruth (`.plutus/expected/`
+  + `manifest.yaml` values) **and** a human-facing `result/` copy. So `byte_exact`
+  baselines now work for build-sensitive artifacts (charts, `*.parquet`, `model.pkl`)
+  that a laptop baseline could never match. `--no-run` keeps the local-bytes opt-out.
+
+### Added — opt-in `env.install_project`
+
+- `env.install_project: true` (uv-only) installs the repo's **own** package into the
+  image, so its console scripts (e.g. `pmm-backtest`) and importable package are
+  available to step commands — for `src/`-layout installable repos. Requires
+  `manager: uv` + a committed lockfile + a `pyproject.toml` at the repo root.
+  Default `false` → no behavior change for existing repos.
+
+### Added — failure diagnostics
+
+- A step's `stdout`/`stderr` now persist to `.plutus/run/<step>/{stdout,stderr}`, and
+  the report prints a stderr tail on failure — no more re-running the container by
+  hand to recover the traceback.
+
+### Fixed — `check` no longer dirties the working tree with downloads
+
+- Data sources fetch into the gitignored `.plutus/cache/` (persisted across runs) and
+  are overlaid into each step's sandbox, instead of downloading into the working
+  tree. Presence checks consider committed data and the cache.
+
+### Fixed — `gdown` is a declared dependency
+
+- Added to the `runner` extra, so manifests with a `google_drive` data source work
+  out of the box instead of failing with `ModuleNotFoundError`.
+
+### Changed — `plutus init` scaffolds `.dockerignore`
+
+- Written at setup time (committed by the author), so the read-only `check` no longer
+  surprise-writes it into the repo root. The build-time write remains a safety net.
+
+### Changed — dev workflow adopts uv
+
+- The dev/test toolchain moved to a PEP 735 dependency group; `uv sync` installs it
+  and `uv run pytest` runs the full suite with no flags. `uv.lock` is now committed.
+
+### Changed — skills
+
+- `plutus-transform` renamed to **`plutus-standardize`** (bring a repo *to* the
+  Plutus Reproducibility Standard). New **`plutus-document`** skill renders the
+  standard README from the verified groundtruth + narrative. Chain order:
+  `plutus-standardize` → `plutus-scoring` → `plutus-document`.
+
 ## [0.4.3] — 2026-06-19
 
 Makes the wheel-based SDK install ergonomic — a plain wheel now works, and the
