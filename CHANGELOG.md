@@ -4,6 +4,42 @@ All notable changes to `plutus-verify` are recorded here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the
 project is pre-1.0 and uses calendar-driven minor bumps.
 
+## [0.5.1] — 2026-06-28
+
+Docs & skills release — no packaged-code changes (the `plutus_verify` wheel is
+functionally identical to 0.5.0). Brings the documentation and the authoring skills
+into full consistency with 0.5.0 behavior.
+
+### Added — `plutus-document` skill
+
+- New skill that renders the standard Plutus-Reproducible `README.md` from the
+  blessed groundtruth (metric tables from `expected.metrics`, chart embeds, data
+  section, env + `plutus check` reproduction block, score badge) plus strategy
+  narrative. Chained after scoring (`plutus-standardize` → `plutus-scoring` →
+  `plutus-document`) or run standalone to refresh the README after a re-snapshot.
+
+### Changed — `plutus-transform` renamed to `plutus-standardize`
+
+- Reflects its purpose (bring a repo *to* the Plutus Reproducibility Standard). The
+  skill still recognizes the old "transform" phrasings.
+
+### Changed — skills updated for 0.5.0 behavior
+
+- `plutus-standardize`: generated `.gitignore` now includes `.plutus/results/` and
+  `.plutus/cache/`; Phase 3/4 reflect the read-only `check` and in-container
+  `snapshot`; new **D6** decision wires `env.install_project` for src-layout /
+  console-script repos; manifest templates carry an `install_project` hint; new
+  `references/v0.5.0.md`.
+- `plutus-scoring`: new `references/v0.5.0.md` — a dirty tree after `check` is now a
+  real smell (missing gitignore), and `install_project` repos that pass `check` are
+  strong Reproducible-bucket evidence.
+
+### Changed — docs
+
+- `CHANGELOG` gains the 0.5.0 entry; `README` "Scoring & skills" + `skill-layer`
+  document the three-skill chain; `reproducible-env` and `v2-manifest` document
+  `env.install_project`.
+
 ## [0.5.0] — 2026-06-28
 
 Reshapes the `snapshot` / `check` data flow into a clean two-verb model, makes
