@@ -264,19 +264,20 @@ regression gate.
 
 ## Changelog
 
-- **0.4.6:** new opt-in `env.install_project` (uv-only) — installs the repo's own
-  package into the image so its console scripts / importable package work in step
-  commands (for `src/`-layout installable repos). Default off.
-- **0.4.5:** step failures now persist `stdout`/`stderr` under `.plutus/run/<step>/`
-  and print a stderr tail in the report; fetched data sources are cached in the
-  gitignored `.plutus/cache/` instead of the working tree (keeping `check`
-  read-only); `plutus init` scaffolds `.dockerignore`; `gdown` added to the
-  `runner` extra (Google-Drive sources work out of the box).
-- **0.4.4:** `check` is now **read-only** — produced artifacts are harvested to the
-  gitignored `.plutus/results/` and compared there, never overwriting committed
-  files; earlier steps reach later ones through that buffer. `snapshot` now runs
-  **in-container** by default (same environment `check` reproduces) and writes both
-  the groundtruth and a human-facing `result/` copy. Dev workflow moved to uv
-  (`uv sync` + `uv run pytest`). See [GUIDELINE.md](GUIDELINE.md).
+- **0.5.0:** read-only verify + in-container snapshot, plus follow-on fixes and a
+  new opt-in install path.
+  - **`check` is read-only** — produced artifacts are harvested to the gitignored
+    `.plutus/results/` and compared there, never overwriting committed files;
+    earlier steps reach later ones through that buffer (the inter-step data bus).
+  - **`snapshot` runs in-container** by default (the same environment `check`
+    reproduces) and writes both the groundtruth and a human-facing `result/` copy.
+  - Step failures persist `stdout`/`stderr` under `.plutus/run/<step>/` and print a
+    stderr tail in the report; fetched data sources are cached in the gitignored
+    `.plutus/cache/` (not the working tree); `plutus init` scaffolds `.dockerignore`;
+    `gdown` added to the `runner` extra (Google-Drive sources work out of the box).
+  - New opt-in **`env.install_project`** (uv-only) installs the repo's own package
+    so its console scripts / importable package work in step commands (for
+    `src/`-layout installable repos). Default off.
+  - Dev workflow moved to uv (`uv sync` + `uv run pytest`). See [GUIDELINE.md](GUIDELINE.md).
 - **v2 (0.2.x–0.4.x):** repos declare a `.plutus/manifest.yaml` and emit a results contract; verification is deterministic with no LLM in the hot path.
 - **v1 (earlier):** plans were extracted from the README by an LLM — still available via `plutus verify <git_url>` for un-instrumented remote repos.
