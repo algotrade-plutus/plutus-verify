@@ -354,7 +354,8 @@ generated Docker build. Previously the framework only knew how to do
   `requirements.txt` are unchanged.
 - The `plutus-transform` Skill probes pyproject.toml first during
   Phase 1 and writes the detected filename into the manifest in Phase
-  3. See [skills/plutus-transform/references/v0.2.8.md](skills/plutus-transform/references/v0.2.8.md).
+  3. See [skills/plutus-standardize/references/v0.2.8.md](skills/plutus-standardize/references/v0.2.8.md)
+  (the skill was named `plutus-transform` at the time; renamed to `plutus-standardize` in 0.5.0).
 
 ### Schema (unchanged)
 
