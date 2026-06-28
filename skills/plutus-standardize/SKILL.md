@@ -39,10 +39,11 @@ Single `AskUserQuestion` call with the questions from `references/decision-tree.
 - **D3**: paper-trading inclusion — skip / artifact_check
 - **D4**: README vs script as truth — path A / path B
 - **D5**: environment reproducibility — port to uv (`uv lock` + commit `uv.lock`; loosen + re-lock the one offending constraint on a conflict) / keep current packaging (deprecated). Defaulted to **port to uv** so the verifier restores the exact locked env (`uv sync --frozen`); a non-uv / lockfile-less env reports `env: NOT reproducible`. Always asked; full options in `references/decision-tree.md`. Replaces the old strip-pins fix-up: locking once captures a consistent set *and* keeps it reproducible, instead of stripping pins and re-resolving differently every build.
+- **D6** *(0.5.0+; asked only if Phase 1 detected an installable package)*: project install — `env.install_project: true` for src-layout / console-script repos (steps run `pmm-backtest` / `python -m <pkg>`), else `false`. Default detected from Phase 1. Requires the D5 uv port + a root `pyproject.toml`. Full options in `references/decision-tree.md`.
 
 Record the answers as a Decision Block; quote back in Phase 4.5.
 
-**Exit criteria**: 5 decisions on record.
+**Exit criteria**: D1–D5 on record (D6 too when the repo is an installable package).
 
 ## Phase 3 — Instrument & manifest
 
@@ -61,6 +62,11 @@ Sequential, no further user interaction except the "boundary" cases below.
    - **On a conflict** (the old G2): `uv lock` fails and names the offending constraint. Loosen that **one** constraint and re-lock — do *not* strip every pin. Surface the loosened constraint in Phase 4.5.
    - Create the local smoke-run venv: `uv sync` (creates `.venv`), then add the verifier SDK to that venv: `uv pip install plutus-verify` (or symlink the local wheel off-tree). The SDK is verifier-injected, so it stays out of the repo's `pyproject.toml`/lock.
    - **D5 = keep current packaging** (deprecated escape hatch): skip the uv port; set `env.manager: pip` + `env.requirements_file`. `plutus check` still runs but reports `env: NOT reproducible` (a soft fail in a future release). Use only when uv adoption is blocked.
+   - **D6 = install the project** (0.5.0+, installable-package repos): set
+     `env.install_project: true` in the manifest. The image then installs the repo's
+     own package (non-editable, into `/opt/venv`) so its console scripts +
+     `import <pkg>` work in step commands. Requires this uv port + a `pyproject.toml`
+     at the repo root (the validator errors otherwise). Surface in Phase 4.5.
 3. **Schema probe** — discover allowed values at runtime, don't hardcode:
    ```python
    from plutus_verify.sdk.schema import UNIT_KINDS, ARTIFACT_KINDS

@@ -87,11 +87,41 @@ The target state is `pyproject.toml` + committed `uv.lock` (`env.manager: uv`, `
 
 ---
 
+## D6 — Project install (src-layout / console-script repos)
+
+**Asked only when Phase 1 detects an installable package** (a `pyproject.toml` with a
+`[project.scripts]` block, or a `src/` layout, or step commands that invoke a console
+script / `python -m <pkg>` rather than `python <file>.py`). Otherwise default to
+`false` and skip the question. Requires `plutus-verify` 0.5.0+.
+
+When the repo's pipeline runs via its own installed package (e.g. `pmm-backtest`,
+`python -m proto_market_maker.backtest`), the image must install the package, not
+just its dependencies — otherwise the console scripts don't exist and
+`import <pkg>` fails. `env.install_project: true` does that (uv-only; requires a
+`pyproject.toml` at the repo root, on top of the D5 uv port). It's a non-editable
+install into `/opt/venv`, so it survives the runtime bind-mount.
+
+**Header**: `Project install`
+
+**Question**: "This repo looks like an installable package (console scripts / `python -m`). Install the project into the image so its entry points work?"
+
+**Options**:
+- **Install the project** *(Recommended for package repos)* — set
+  `env.install_project: true`. Requires the D5 uv port + a root `pyproject.toml`.
+- **Don't install** *(default for plain-script repos)* — leave
+  `env.install_project: false`; steps run plain `python <file>.py` against the source.
+
+**Default**: detected from Phase 1 — `true` when a console-script/src-layout package
+is detected, else `false`.
+
+---
+
 ## Output of Phase 2
 
-Five decisions on record. Each is short-lived state used by Phase 3:
+Decisions on record. Each is short-lived state used by Phase 3:
 - D1 → which manifest template in `manifest-templates/` to load
 - D2 → `verification_mode` field on the optimization step
 - D3 → whether to add a step or just `nine_step_coverage` entry for paper trading
 - D4 → whether `expected.metrics[].value` and `.plutus/expected/<step>/<path>` chart baselines come from README (path A; copied in Phase 3 step 5b) or smoke-run output (path B; captured by `plutus snapshot` in Phase 4 step 2)
 - D5 → how the env is ported to uv (`uv lock` + committed `uv.lock`) and the resulting `env.manager: uv` / `env.lockfile: uv.lock` manifest fields
+- D6 → whether `env.install_project: true` is set (0.5.0+; installable-package repos)
