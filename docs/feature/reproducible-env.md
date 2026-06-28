@@ -44,6 +44,7 @@ Set these under `env` in `.plutus/manifest.yaml` (full env schema:
 | `manager` | `uv` \| `pip` | `pip` | `uv` restores a committed lockfile; `pip` re-resolves (deprecated). |
 | `lockfile` | string \| null | `null` | Path to the committed lockfile (e.g. `uv.lock`). **Required when `manager: uv`.** |
 | `requirements_file` | string \| null | `null` | pip path only; `requirements.txt` or `pyproject.toml`. |
+| `install_project` | bool | `false` | **0.5.0+, uv-only.** Also install the repo's *own* package into the image, so its console scripts / `import <pkg>` work in step commands (for `src/`-layout / console-script repos). Requires `manager: uv` + a `pyproject.toml` at the repo root. See [v2-manifest](v2-manifest.md). |
 
 ## Usage Examples
 
@@ -90,6 +91,9 @@ env:
   uv steps only *execute* correctly from **0.4.1** (the runner used a login shell that
   reset `PATH` and hid the venv) and `--secrets-from-env` only injects safely from
   **0.4.2** (earlier it forwarded the whole host env, whose `PATH` re-hid the venv).
+- **`env.install_project` requires 0.5.0+.** It installs the repo's own package
+  last in the build (after `uv sync --frozen --no-install-project` keeps the deps
+  layer cached), non-editable into `/opt/venv` so it survives the runtime bind-mount.
 - **`--secrets-from-env` forwards only declared secrets.** It injects only the
   manifest's `secrets[]` keys, each scoped to the steps in its `used_by`; undeclared
   host vars (including `PATH`/`HOME`) never reach the container. A secret key may not
