@@ -106,7 +106,7 @@ actionable `SdkBundleError` — if the install has no usable files at all (e.g. 
 ## Quick start
 
 ```bash
-plutus init .                      # scaffold manifest + CI workflow + example script + .dockerignore
+plutus init .                      # scaffold manifest + example script + .dockerignore
 printf '.plutus/run/\n.plutus/results/\n.plutus/cache/\n' >> .gitignore   # ephemera — never committed
 # 1. instrument each step's script (see .plutus/example_script.py):
 #      import plutus_verify as pv
@@ -142,7 +142,7 @@ All subcommands are under the `plutus` entrypoint (`plutus -h` for help):
 
 | Command | What it does |
 |---|---|
-| `plutus init [path]` | Scaffold `.plutus/manifest.yaml`, `.github/workflows/plutus.yml`, and an example instrumented script. |
+| `plutus init [path]` | Scaffold `.plutus/manifest.yaml` and an example instrumented script. |
 | `plutus check [path]` | **Verify** (read-only): build → run each step in-container → compare produced output (in `.plutus/results/`) against the groundtruth. The reproducibility gate. |
 | `plutus snapshot [path]` | **Bless**: build → run each step in-container → write the groundtruth (`.plutus/expected/` + `manifest.yaml` values) and a human-facing `result/` copy. `--no-run` blesses pre-existing local outputs instead. |
 | `plutus bootstrap [path]` | Auto-fill a draft manifest from existing `.plutus/run/` results (run after instrumenting + a local run). |

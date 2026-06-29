@@ -44,7 +44,7 @@ For each bucket (Reproducible 50, Tidy 25, Standardized 10, Innovative 15):
 1. Read the rubric's bucket-by-bucket scoring guide.
 2. Inspect the target repo against the criteria:
    - **Reproducible** — does `plutus check` exit 0? Were any manifest-side workarounds applied (network routing, secret routing to non-DB steps, etc.)? Were any tracked config files modified? Use the `plutus check` output (run it if necessary, or rely on the chain-context transcript from `plutus-standardize`).
-   - **Tidy** — read the README; check for the ~5 sub-points (structure, `.env.example`, documented inputs, parameter pipeline accuracy, Python pin + CI).
+   - **Tidy** — read the README; check for the ~5 sub-points (structure, `.env.example`, documented inputs, parameter pipeline accuracy, Python pin).
    - **Standardized** — check for the canonical 4-step shape, parameter externalization, predictable chart paths, no module-level side effects.
    - **Innovative** — survey the metric set and analytical surface. Novel metrics or non-textbook strategy logic earn this bucket.
 3. Emit one line per bucket: `"<Bucket>: <score>/<weight> — <one-line reasoning>"`.

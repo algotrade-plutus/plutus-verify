@@ -2,7 +2,7 @@
 
 Provides a Click group with subcommands:
   - verify    : original single-command verifier (PLUTUS-standard repo)
-  - init      : scaffold .plutus/manifest.yaml + .github/workflows/plutus.yml
+  - init      : scaffold .plutus/manifest.yaml + example script
   - check     : run the native v2 pipeline locally against a working copy
   - snapshot  : capture step outputs into .plutus/expected/
   - bootstrap : generate manifest.yaml.draft + manifest_TODO.md from .plutus/run/
@@ -346,14 +346,13 @@ def _run_one(
 
 @cli.command("init")
 @click.argument("repo_path", type=click.Path(path_type=Path, file_okay=False), default=".")
-@click.option("--force", is_flag=True, help="overwrite existing manifest/workflow")
+@click.option("--force", is_flag=True, help="overwrite existing manifest")
 def init_cmd(repo_path: Path, force: bool) -> None:
-    """Scaffold .plutus/manifest.yaml and .github/workflows/plutus.yml."""
+    """Scaffold .plutus/manifest.yaml and an example instrumented script."""
     from plutus_verify.scaffold.init import scaffold_init
 
     res = scaffold_init(Path(repo_path), force=force)
     click.echo(f"created manifest: {res.created_manifest}")
-    click.echo(f"created workflow: {res.created_workflow}")
     click.echo(f"created example script: {res.created_example_script}")
     click.echo("  - see .plutus/example_script.py for how to instrument your scripts")
 

@@ -37,7 +37,7 @@ Score against this checklist (~5 points each):
 - `.env.example` parses with `source .env` (no unquoted `<placeholder>` lines)
 - All data inputs documented (no surprise dependencies like a missing F2M leg)
 - Optimization / parameter pipeline accurately described (script behavior matches docs)
-- Has `.python-version` or equivalent pin, plus CI workflow
+- Has `.python-version` or equivalent pin
 
 ### Standardized / template (10)
 - **10** — Canonical 4-step shape (`data_preparation` → `in_sample_backtest` → `optimization` → `out_of_sample_backtest`), parameters externalized to `parameter/*.json`, charts in predictable `result/{backtest,optimization}/` paths, no module-level side effects.

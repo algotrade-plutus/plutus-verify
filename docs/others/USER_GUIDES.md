@@ -19,7 +19,6 @@ By the end of this guide the target repo will have:
 target-repo/
 ├── .plutus/
 │   └── manifest.yaml            # author-written reproducibility contract
-├── .github/workflows/plutus.yml # CI gate (optional but recommended)
 ├── .gitignore                   # +5 lines for plutus-verify ephemera
 └── <scripts>.py                 # instrumented with `with pv.step(...) as r:` blocks
 ```
@@ -515,46 +514,12 @@ something looks fishy, post the full log + read
 
 ---
 
-## 11. CI gate (recommended)
-
-Create `.github/workflows/plutus.yml`:
-
-```yaml
-name: plutus reproducibility
-on: [push, pull_request]
-jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      # Until plutus-verify is on PyPI, install from a known wheel URL or git ref.
-      - name: Install plutus-verify
-        run: pip install git+https://github.com/<org>/plutus-automation-scoring.git@<ref>
-
-      - name: Run reproducibility check
-        run: plutus check --secrets-from-env
-        env:
-          # Mirror your secrets[] entries here as GitHub Action secrets.
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-          # ...
-```
-
-Once `plutus-verify` is on PyPI, the install step simplifies to
-`pip install plutus-verify==0.2.0` (or whatever version you pin to).
-
----
-
-## 12. Commit
+## 11. Commit
 
 ```bash
 git checkout -b feat/plutus-verify-integration
 
 git add .plutus/manifest.yaml \
-        .github/workflows/plutus.yml \
         .gitignore \
         <instrumented_script>.py \
         <other_instrumented_script>.py
@@ -579,8 +544,7 @@ vs. B).
 7. Rename .draft → .yaml                              → §8
 8. .gitignore the ephemera                            → §9
 9. plutus check . — verify end-to-end                 → §10
-10. Optional: add CI workflow                         → §11
-11. Commit + ask maintainer to review                 → §12
+10. Commit + ask maintainer to review                 → §11
 ```
 
 ---

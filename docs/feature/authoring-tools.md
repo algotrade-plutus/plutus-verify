@@ -13,7 +13,7 @@ These four `plutus` subcommands are the author-facing toolkit for making a repo
 v2-verifiable and keeping it that way. They sit around the
 [v2 manifest](v2-manifest.md):
 
-- **`init`** — scaffold an empty `.plutus/` skeleton + CI workflow + example script.
+- **`init`** — scaffold an empty `.plutus/` skeleton + example script.
 - **`bootstrap`** — generate a draft manifest *from* an already-instrumented run.
 - **`snapshot`** — capture a passing run's outputs/metrics as the new "expected."
 - **`check`** — run the v2 native pipeline locally and return the verdict as the exit code.
@@ -41,7 +41,6 @@ Scaffolds, creating dirs as needed and never overwriting without `--force`:
 - `.plutus/manifest.yaml` (skeleton with inline `TODO_*` markers)
 - `.plutus/example_script.py` (documents `pv.step` / `r.metric` / `r.artifact` / units)
 - `.plutus/expected/` (for reference artifacts)
-- `.github/workflows/plutus.yml` (CI workflow)
 
 ### `plutus check`
 

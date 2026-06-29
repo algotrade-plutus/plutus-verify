@@ -59,7 +59,7 @@ Four weighted buckets; the total is rounded to the nearest 5%.
 | Bucket | Weight | What it measures |
 |--------|--------|------------------|
 | **Reproducible** | 50% | `plutus check` exits 0 and README metrics match within tolerance. Tiered: **50** clean / **45** after manifest-side workarounds / **35** after touching tracked config (e.g. `requirements.txt`) / **20** host-only / **0** not reproduced. |
-| **Tidy / well-documented** | 25% | ~5 sub-points (~5 pts each): README structure + metric tables, `.env.example` parses with `source`, data inputs documented, optimization/parameter pipeline accurately described, `.python-version` + CI present. |
+| **Tidy / well-documented** | 25% | ~5 sub-points (~5 pts each): README structure + metric tables, `.env.example` parses with `source`, data inputs documented, optimization/parameter pipeline accurately described, `.python-version` present. |
 | **Standardized / template** | 10% | **10** = canonical 4-step shape (`data_preparation → in_sample_backtest → optimization → out_of_sample_backtest`), externalized `parameter/*.json`, predictable `result/{backtest,optimization}/` paths, no module-level side effects; **5** = one significant deviation; **0** = needs rework. |
 | **Innovative** | 15% | **15** = novel metrics/diagnostics/strategy logic; **8** = thoughtful but conventional; **0** = textbook. |
 

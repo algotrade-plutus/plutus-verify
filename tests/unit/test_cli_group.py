@@ -20,7 +20,6 @@ def test_init_subcommand_creates_files(tmp_path: Path):
     result = runner.invoke(cli, ["init", str(tmp_path)])
     assert result.exit_code == 0, result.output
     assert (tmp_path / ".plutus" / "manifest.yaml").exists()
-    assert (tmp_path / ".github" / "workflows" / "plutus.yml").exists()
 
 
 def test_check_subcommand_loads_manifest(tmp_path: Path, monkeypatch):

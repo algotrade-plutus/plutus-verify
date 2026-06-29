@@ -470,41 +470,7 @@ When all TODOs are filled in and you've chosen path (A) or (B):
 mv .plutus/manifest.yaml.draft .plutus/manifest.yaml
 ```
 
-## Step 8 — CI workflow
-
-Create `.github/workflows/plutus.yml`:
-
-```yaml
-name: plutus reproducibility
-on: [push, pull_request]
-jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install plutus-verify
-        run: pip install plutus-verify  # NOTE: only works after PyPI publish; informational until then
-      - name: Run reproducibility check
-        run: plutus check --secrets-from-env
-        env:
-          DB_NAME: ${{ secrets.DB_NAME }}
-          DB_USER: ${{ secrets.DB_USER }}
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-          DB_HOST: ${{ secrets.DB_HOST }}
-          DB_PORT: ${{ secrets.DB_PORT }}
-```
-
-If the user wants CI to actually run today (before plutus-verify is on PyPI), change the install step to a git URL:
-```yaml
-      - name: Install plutus-verify (from source)
-        run: pip install git+https://github.com/<org>/plutus-automation-scoring.git@feat/spec-v2-foundation
-```
-Ask the user for the right URL.
-
-## Step 9 — `.gitignore`
+## Step 8 — `.gitignore`
 
 Append:
 
@@ -519,7 +485,7 @@ Append:
 
 Keep `.plutus/manifest.yaml` + `.plutus/expected/` (if used) under version control. Run-artifacts, the generated Dockerfile, and the draft/TODO scaffolding are all ephemeral.
 
-## Step 10 — Run `plutus check` end-to-end
+## Step 9 — Run `plutus check` end-to-end
 
 ```bash
 plutus check . 2>&1 | tee /tmp/plutus-check.log
@@ -565,11 +531,11 @@ Exit code 1 (path A): **6/6 in-sample pass, 3/6 OOS pass**.
 
 If path B (bootstrap values): exit 0, all 12 pass.
 
-## Step 11 — Commit
+## Step 10 — Commit
 
 ```bash
 git checkout -b feat/plutus-verify-integration
-git add .plutus/manifest.yaml .github/workflows/plutus.yml .gitignore backtesting.py evaluation.py
+git add .plutus/manifest.yaml .gitignore backtesting.py evaluation.py
 git commit -m "$(cat <<'EOF'
 feat: integrate plutus-verify v2 reproducibility verification
 
@@ -581,8 +547,6 @@ Instruments backtesting.py and evaluation.py with `with pv.step(...) as r:`
 blocks that emit canonical `.plutus/run/<step_id>/results.json` files. The
 verifier reads these by metric name and compares against the manifest's
 expected.metrics within tolerance.
-
-Adds .github/workflows/plutus.yml so reproducibility is enforced on every PR.
 
 Workflow used: instrument scripts → run locally → `plutus bootstrap` to
 auto-generate the manifest draft → fill 8 TODOs by hand using
@@ -682,4 +646,4 @@ When in doubt about how to fill a TODO, that directory's `.plutus/manifest.yaml`
 - `plutus check .` produces:
   - Path A: exit 1, 6/6 in-sample + 3/6 OOS (Sharpe/Sortino/HPR fail — the README divergence)
   - Path B: exit 0, 6/6 + 6/6
-- A PR is opened (if user requested) and CI green (or red on the OOS divergence — that's a feature, not a bug)
+- A PR is opened (if user requested); `plutus check` is green (or red on the OOS divergence — that's a feature, not a bug)

@@ -1,7 +1,7 @@
 """Templates emitted by `plutus init`."""
 import yaml
 
-from plutus_verify.scaffold.templates import MANIFEST_SKELETON, WORKFLOW_YAML
+from plutus_verify.scaffold.templates import MANIFEST_SKELETON
 
 
 def test_manifest_skeleton_is_valid_yaml():
@@ -27,11 +27,3 @@ def test_manifest_skeleton_loads_via_load_manifest_from_yaml_text():
 
     m = load_manifest_from_yaml_text(MANIFEST_SKELETON)
     assert m.schema_version == "2.0"
-
-
-def test_workflow_yaml_is_valid_github_actions():
-    data = yaml.safe_load(WORKFLOW_YAML)
-    assert data["name"] == "plutus reproducibility"
-    assert "on" in data or True in data  # PyYAML maps "on:" to True sometimes; just check structure
-    assert "jobs" in data
-    assert "check" in data["jobs"]

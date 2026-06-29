@@ -123,8 +123,7 @@ etc. get baselines that actually match what `check` will reproduce.
 plutus check .        # exit 0 reproduced · 1 partial · 2 failed; working tree stays clean
 ```
 
-Because `check` is read-only, it's safe in CI / pre-commit. `plutus init` scaffolds
-a GitHub Actions workflow you can keep.
+Because `check` is read-only, it's safe in CI / pre-commit.
 
 ## Day-to-day
 

@@ -134,25 +134,3 @@ def run_backtest() -> None:
 if __name__ == "__main__":
     run_backtest()
 '''
-
-
-WORKFLOW_YAML = """\
-name: plutus reproducibility
-on: [push, pull_request]
-jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install plutus-verify
-        run: pip install plutus-verify
-      - name: Run reproducibility check
-        run: plutus check --secrets-from-env
-        env:
-          # Add per-secret entries here; mirror your manifest's `secrets:` block.
-          # TIINGO_API_KEY: ${{ secrets.TIINGO_API_KEY }}
-          PLUTUS_PLACEHOLDER: ""
-"""
