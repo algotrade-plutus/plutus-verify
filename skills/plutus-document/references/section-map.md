@@ -55,8 +55,8 @@ table + `expected.artifacts` embeds).
 ## Badges
 
 - `![Static Badge](https://img.shields.io/badge/PLUTUS-<score>%25-<color>)` — score
-  from `plutus-scoring` (rounded to 5%); color by band (e.g. ≥75 darkgreen,
-  ≥50 olive, else grey). When run standalone without a score, leave the prior badge
+  from `plutus-scoring` (rounded to 5%); color by band (≥75 → darkgreen,
+  50–74 → olive, else → grey). When run standalone without a score, leave the prior badge
   or ask.
 - Type badges (`PLUTUS-Sample`, `PLUTUS-PROTO`, …) — preserved from the existing
   README if present, else set from the project-type decision/config.
