@@ -1,0 +1,47 @@
+# pyproject.toml template — canonical src-layout package (Phase 3 step 3)
+#
+# Fill every <PLACEHOLDER>. Names from T1/T2; deps from Phase 1 + T4; floor from T5.
+#   <dist-name>   distribution name, kebab-case      e.g. my-strategy
+#   <pkg>         import name, snake_case             e.g. my_strategy
+#   <prefix>      console-script prefix               e.g. ms
+#   <floor>       requires-python                     e.g. >=3.12
+#
+# T4 = upgrade-to-floors: declare deps as `>=` lower bounds (current version is the
+#   floor, not the target) and let `uv lock` resolve latest-compatible.
+# T4 = preserve-pins: use `==` instead. A dep the maintainer vetoes for upgrade gets a
+#   capped range, e.g. `numpy>=2.0,<3`.
+
+[project]
+name = "<dist-name>"
+version = "0.1.0"
+description = "<one-line strategy description>"
+requires-python = "<floor>"
+dependencies = [
+    # one line per runtime dep; e.g. (upgrade-to-floors):
+    # "pandas>=2.2",
+    # "numpy>=2.0",
+    # "matplotlib>=3.9",
+    # "optuna>=3.6",
+    # "psycopg2-binary>=2.9",
+    # "python-dotenv>=1.0",
+    #
+    # NEVER list plutus-verify here — it is verifier-injected in-container and
+    # installed ad-hoc into the dev venv from the GitHub release wheel (GT6).
+]
+
+[project.scripts]
+# one per entry module, from the T2 map: <prefix>-<verb> = "<pkg>.<module>:main"
+# <prefix>-load-data = "<pkg>.data_loader:main"
+# <prefix>-backtest  = "<pkg>.backtest:main"
+# <prefix>-optimize  = "<pkg>.optimize:main"
+# <prefix>-evaluate  = "<pkg>.evaluate:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "pylint>=3.3"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/<pkg>"]
