@@ -22,7 +22,7 @@ DIST_DIR="$ROOT/dist"
 echo "Pass 1: building wheel with empty _bundled/ ..."
 rm -rf "$DIST_DIR" "$ROOT/build"
 find "$BUNDLED_DIR" -name '*.whl' -delete 2>/dev/null || true
-python -m build --wheel
+uv build --wheel
 
 # Capture pass-1 wheel.
 INNER_WHEEL=$(ls "$DIST_DIR"/plutus_verify-*-py3-none-any.whl)
@@ -34,7 +34,7 @@ cp "$INNER_WHEEL" "$BUNDLED_DIR/"
 # Pass 2: rebuild with the wheel staged inside _bundled/.
 echo "Pass 2: rebuilding wheel with _bundled/ populated ..."
 rm -rf "$DIST_DIR" "$ROOT/build"
-python -m build --wheel
+uv build --wheel
 
 OUTER_WHEEL=$(ls "$DIST_DIR"/plutus_verify-*-py3-none-any.whl)
 echo "Pass 2 produced: $(basename "$OUTER_WHEEL")"
