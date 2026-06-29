@@ -229,3 +229,21 @@ docker run --rm --network=none \
 If this succeeds (because the host's full tree is mounted), then the step works in principle — the failure is staging-filter scope, not a real bug. Compare what the manual repro had access to vs what `step.inputs` declared.
 
 **Recommended default.** Start every new manifest with `inputs: []` per step. Tighten step-by-step only after confirming the manifest works at the looser default. See the updated Phase 3 step 6.5 guidance in [`v0.2.10.md`](v0.2.10.md).
+
+---
+
+## G13 — `google_drive` data source fails host-side with `ModuleNotFoundError: gdown` (0.5.0+)
+
+**Symptom.** `plutus check` prints `gdown failed for <url>: No module named 'gdown'`, skips the Drive fetch, falls back to the `data_preparation` command (which then crashes if it needs DB secrets), and every downstream backtest step FAILs `FileNotFoundError` on its input CSV (e.g. `data/is/pe_dps.csv`).
+
+**Diagnosis.** The Drive fetch runs in the **host** `.venv`, not in-container. `gdown` ships only in plutus-verify's `runner` extra (`runner = ["docker>=7.0", "jupyter-repo2docker>=2024.3", "build>=1.0", "gdown>=5.0"]`), but the base release wheel does not include it. So any **D1 = Drive-backed (Tier-2)** repo hits a missing-`gdown` error host-side even on 0.5.0+. (`references/v0.5.0.md`'s "works out of the box" note holds only when the SDK is installed *with* the `runner` extra.)
+
+**Fix.** Install the `runner` extra (or `gdown` directly) into the smoke `.venv` during pre-flight step 2 / Phase 3 step 2:
+
+```bash
+uv pip install "plutus-verify[runner] @ $WHL"   # $WHL = the GitHub release wheel URL
+# or, minimally:
+uv pip install 'gdown>=5.0'
+```
+
+Re-run `plutus check`. Do this for **every Tier-2 repo** — it's an env/tooling step, not a manifest fix.

@@ -12,7 +12,18 @@ The workflow runs four sequential phases (Survey → Decide → Instrument → V
 ## Pre-flight (before Phase 1)
 
 1. Confirm target repo path. Default to CWD; accept an explicit path argument.
-2. Confirm `plutus_verify` is importable in the target's venv. If missing, install it — `uv pip install plutus-verify` when the target uses uv (the canonical path; matches the env the dockerfile builds, which installs the SDK via `uv pip install --python /opt/venv/bin/python`), or `pip install plutus-verify` as a host convenience otherwise (or symlink the local wheel from this repo's `dist/` if working off-tree). This is just an importability probe, not the standard install path.
+2. Confirm `plutus_verify` is importable in the target's venv. **plutus-verify is not on PyPI** — install it from the official GitHub release wheel, never from a PyPI name (which doesn't exist) and never by guessing a local path. The releases page is <https://github.com/algotrade-plutus/plutus-verify/releases>; the per-version wheel URL is
+   ```
+   https://github.com/algotrade-plutus/plutus-verify/releases/download/v<version>/plutus_verify-<version>-py3-none-any.whl
+   ```
+   Install it (uv path is canonical — it matches the env the dockerfile builds, which installs the SDK via `uv pip install --python /opt/venv/bin/python`):
+   ```bash
+   WHL=https://github.com/algotrade-plutus/plutus-verify/releases/download/v0.5.1/plutus_verify-0.5.1-py3-none-any.whl
+   uv pip install "$WHL"          # base SDK; importability probe only
+   # for a D1 = Drive-backed (Tier-2) repo, pull the runner extra so gdown is present host-side (see G13):
+   uv pip install "plutus-verify[runner] @ $WHL"
+   ```
+   Use `pip install "$WHL"` (or the `[runner]`-extra form) on a non-uv host. This is just an importability probe, not the standard (in-container) install path.
 3. Probe version: `python -c "import plutus_verify; print(plutus_verify.__version__)"`. Load the matching `references/v<minor>.md` and apply its rules to Phases 3-4.
 4. Warn (don't block) if the target repo has uncommitted changes. Phase 3 will branch off `HEAD`, so any in-progress work is preserved on the new branch — but the maintainer should know. Also: a clean working tree is load-bearing for Phase 3 step 5's chart-baseline copy (the v1-committed bytes need to be on disk).
 
@@ -60,7 +71,7 @@ Sequential, no further user interaction except the "boundary" cases below.
    - Ensure dependencies live in `pyproject.toml` (`[project.dependencies]`). If the repo only has `requirements.txt`, import them: `uv init` (only if there's no `pyproject.toml`), then `uv add -r requirements.txt`. Leave the legacy `requirements.txt` on disk for now — the manifest points at the lockfile, not it.
    - **Lock once and commit**: `uv lock` resolves a consistent set and writes `uv.lock`. Commit `pyproject.toml` + `uv.lock` on the branch so the locked env is reviewable and reversible. The verifier later runs `uv sync --frozen` against exactly this lock.
    - **On a conflict** (the old G2): `uv lock` fails and names the offending constraint. Loosen that **one** constraint and re-lock — do *not* strip every pin. Surface the loosened constraint in Phase 4.5.
-   - Create the local smoke-run venv: `uv sync` (creates `.venv`), then add the verifier SDK to that venv: `uv pip install plutus-verify` (or symlink the local wheel off-tree). The SDK is verifier-injected, so it stays out of the repo's `pyproject.toml`/lock.
+   - Create the local smoke-run venv: `uv sync` (creates `.venv`), then add the verifier SDK to that venv from the GitHub release wheel (pre-flight step 2; **not** PyPI, not a guessed local path): `uv pip install "$WHL"`. The SDK is verifier-injected, so it stays out of the repo's `pyproject.toml`/lock. **For a D1 = Drive-backed (Tier-2) repo, install the `runner` extra instead** — `uv pip install "plutus-verify[runner] @ $WHL"` — so `gdown` is present; the Drive fetch runs **host-side** in this venv and the base wheel does not include it (G13).
    - **D5 = keep current packaging** (deprecated escape hatch): skip the uv port; set `env.manager: pip` + `env.requirements_file`. `plutus check` still runs but reports `env: NOT reproducible` (a soft fail in a future release). Use only when uv adoption is blocked.
    - **D6 = install the project** (0.5.0+, installable-package repos): set
      `env.install_project: true` in the manifest. The image then installs the repo's
@@ -129,7 +140,13 @@ Sequential, no further user interaction except the "boundary" cases below.
    snapshot --no-run --no-metrics .` remains the local-bytes opt-out when a host
    smoke-run is the source of truth.) Skip for D4 = path A — the baseline was already
    copied from README references in Phase 3 step 5b. Note: `plutus init` scaffolds
-   `.dockerignore` on 0.5.0+, so the skill no longer needs to hand-write it.
+   `.dockerignore` on 0.5.0+, so the skill no longer needs to hand-write it. **If you
+   skip `plutus init` (to avoid clobbering an authored manifest) and hand-write
+   `.dockerignore`, never exclude `.plutus/build/`** — the verifier stages its own SDK
+   wheel there and the generated Dockerfile `COPY`s it, so excluding it fails the build
+   with `failed to compute cache key: ".plutus/build/...whl": not found`. Safe to
+   exclude: `.git`, `.venv`, `__pycache__`, `.plutus/run/`, `.plutus/results/`,
+   `.plutus/cache/`. Do **not** exclude `.plutus/build/` or `.plutus/Dockerfile.generated`.
 
 3. **`plutus check . --secrets-from-env`** and confirm exit=0. Capture full output. On 0.2.7+, expect `ok byte_identical` lines for deterministic charts and `WARN byte_identical` lines for charts with timestamp / font / floating-point jitter — both are non-blocking.
 
