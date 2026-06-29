@@ -16,6 +16,8 @@ Reference exemplar: `ProtoMarketMaker/README.md`.
 ![Static Badge](https://img.shields.io/badge/PLUTUS-{{G:score}}%25-{{G:color}})
 ![Static Badge](https://img.shields.io/badge/PLUTUS-{{G:type}}-darkblue)
 
+<sub>_PLUTUS score is an LLM-assessed reference signal (see [plutus-scoring](https://github.com/algotrade-plutus/plutus-guideline)), not a certified quality grade, and is subject to change. The verified guarantee is reproducibility — `plutus check` exits 0._</sub>
+
 # {{N:Title}}
 > {{N:one-line strategy summary}}
 

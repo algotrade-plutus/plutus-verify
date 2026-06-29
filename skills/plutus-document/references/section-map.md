@@ -60,6 +60,11 @@ table + `expected.artifacts` embeds).
   or ask.
 - Type badges (`PLUTUS-Sample`, `PLUTUS-PROTO`, …) — preserved from the existing
   README if present, else set from the project-type decision/config.
+- **Reference-only caveat (required).** Immediately below the badge row, render the
+  `<sub>…</sub>` caveat line from the template verbatim: the score is an LLM-assessed
+  *reference signal*, not a certified quality grade, and is subject to change; the only
+  verified guarantee is reproducibility (`plutus check` exits 0). Keep this line even
+  when the badge is left unchanged in a standalone run — it must never be dropped.
 
 ## Consistency guarantee
 

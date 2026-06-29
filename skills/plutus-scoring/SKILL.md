@@ -9,6 +9,20 @@ Apply the 50/25/10/15 PLUTUS compliance rubric to a v2-compliant repo and produc
 
 Standalone-invokable on any v2 repo. Also auto-chained from [`plutus-standardize`](../plutus-standardize/SKILL.md) as its final hand-off step after a clean transform — the chain passes context via the transform skill's Phase 4.5 summary (architectural smells worked around but not fixed).
 
+## Status — reference only
+
+> The compliance score and the `PLUTUS-<n>%` badge are an LLM's rubric-based
+> judgment, **not a certified quality grade**. They vary with the scoring model's
+> capabilities and are **subject to change**. They are a *reference signal*, not an
+> indication of strategy quality or correctness. The only guarantee this tool makes
+> today is **reproducibility** — that `plutus check` exits 0 (the Reproducible-50
+> bucket, the one bucket anchored to an objective fact). Treat the other three
+> buckets (Tidy, Standardized, Innovative) as advisory.
+
+This framing is **emitted in the scoring output** (see Phase 1) and **rendered under
+the badge** in the README by `plutus-document`, so it travels with both the skill and
+the artifact.
+
 ## Pre-flight (before Phase 1)
 
 1. **Confirm target repo path.** Default to CWD; accept an explicit path argument.
@@ -34,6 +48,10 @@ For each bucket (Reproducible 50, Tidy 25, Standardized 10, Innovative 15):
    - **Standardized** — check for the canonical 4-step shape, parameter externalization, predictable chart paths, no module-level side effects.
    - **Innovative** — survey the metric set and analytical surface. Novel metrics or non-textbook strategy logic earn this bucket.
 3. Emit one line per bucket: `"<Bucket>: <score>/<weight> — <one-line reasoning>"`.
+4. Emit the **reference-only disclaimer** alongside the total (see "Status — reference
+   only" above): the score is an LLM rubric judgment, not a certified quality grade, and
+   is subject to change; the verified guarantee is reproducibility (`plutus check` exits
+   0). This line is mandatory in every scoring output, standalone or chained.
 
 ## Phase 2 — Improvement paths
 
@@ -87,6 +105,7 @@ Mechanical checks before declaring done:
 
 - Per-bucket score is emitted with one-line reasoning for each of the four buckets.
 - Total score is emitted, rounded to 5%.
+- The reference-only disclaimer is emitted alongside the total (score is an LLM judgment, not a quality grade; verified guarantee is `plutus check` exit 0).
 - Improvement paths are concrete (each names a file, line, or specific change) and ranked by cost.
 - Re-run command block is visible in the transcript with concrete `<BRANCH>` and `<SECRET_KEY_N>` substitutions made.
 - If chained from `plutus-standardize`, item 4 (worked-around smells) is also present.

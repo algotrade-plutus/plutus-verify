@@ -7,6 +7,12 @@ step after a clean transform.
 
 > Source: [docs/others/zbounce-v1-to-v2-upgrade.md](../../../docs/others/zbounce-v1-to-v2-upgrade.md) §7.
 
+> **Status — reference only.** This score and its `PLUTUS-<n>%` badge are an LLM's
+> rubric-based judgment, **not a certified quality grade**. They vary with the scoring
+> model and are **subject to change**. Only the Reproducible-50 bucket is anchored to an
+> objective fact (`plutus check` exits 0); the other three buckets are advisory. The
+> tool's guarantee today is reproducibility, not a quality rating.
+
 ## Buckets
 
 | Bucket                  | Weight | What it measures |

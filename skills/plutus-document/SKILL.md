@@ -133,5 +133,6 @@ new section, or narrative classification repeatedly failed. Otherwise emit one l
   `value`; every `expected.artifacts[].path` is embedded.
 - The reproduction block names the correct pinned version + wheel URL.
 - The score badge matches the `plutus-scoring` result (or was deliberately left).
+- The reference-only caveat line is rendered directly below the badge row (never dropped).
 - No `{{G:}}` / `{{N:}}` tags remain in the output.
 - Drafted/co-authored sections are flagged in the review checklist.
