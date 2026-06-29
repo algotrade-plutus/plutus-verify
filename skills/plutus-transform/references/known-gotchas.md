@@ -146,11 +146,31 @@ must say it's secondary.
 `ModuleNotFoundError: No module named 'gdown'`, then downstream steps FAIL on missing
 `data/...csv`.
 
-**Cause**: the Drive fetch runs in the **host** dev venv, and `gdown` ships only in
-plutus-verify's `runner` extra — the base wheel doesn't include it. (Same root cause as
-`plutus-standardize` G13.)
+**Cause**: the Drive fetch runs **host-side, in the same interpreter that runs the
+`plutus` CLI** (`data_resolver._download_google_drive` → `fetch._default_gdown_*`), and
+`gdown` ships only in plutus-verify's `runner` extra — the base wheel doesn't include it.
+(Same root cause as `plutus-standardize` G13.)
 
-**Fix**: for a Drive-backed repo, install the runner extra into the dev venv —
-`uv pip install "plutus-verify[runner] @ $WHL"` (or minimally `uv pip install 'gdown>=5.0'`)
-before the gate (Phase 5 step 2). This is dev-env tooling, not a project dependency
-(GT6 still holds).
+**Fix**: install the runner extra into **the venv the `plutus` CLI runs out of** — *not*
+necessarily the project `.venv`. Which venv that is depends on how `plutus` was installed
+(`head -1 $(which plutus)` shows the interpreter):
+
+- **`uv tool` / pipx install** (global, isolated venv at
+  `~/.local/share/uv/tools/plutus-verify/`) — reinstall the *tool* with the extra:
+  ```bash
+  uv tool install --force "plutus-verify[runner] @ $WHL"   # gdown into the CLI's venv
+  ```
+  Installing into the project `.venv` here does **nothing** — the fetch never runs there.
+- **Invoked from the project `.venv`** (e.g. `uv run plutus`) — only then does
+  ```bash
+  uv pip install "plutus-verify[runner] @ $WHL"   # or minimally 'gdown>=5.0'
+  ```
+  satisfy the fetch.
+
+Do this before the gate (Phase 5 step 2). This is dev-env tooling, not a project
+dependency (GT6 still holds).
+
+> **Provenance:** the project-`.venv` install was the literal reading of the old GT10
+> ("install into the dev venv") and it silently failed on a `uv tool`-installed CLI
+> (ProtoSmartBeta, 2026-06-29) — `gdown` landed in the project venv but `plutus check`
+> still raised `No module named 'gdown'`. "dev venv" was ambiguous; it means the CLI's venv.

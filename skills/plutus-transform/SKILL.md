@@ -89,7 +89,7 @@ Sequential, no further user interaction except the boundary asks below. **Use `g
 ## Phase 5 — Verify (the gate)
 
 1. **Lock + sync** — `uv lock` (resolves per T4; on a conflict, loosen the **one** offending constraint and re-lock — surface it in Phase 6), then `uv sync`.
-2. **Install the SDK into the dev venv** *(only if any script does `import plutus_verify`)* — from the GitHub release wheel, **not** PyPI, **not** the repo's `pyproject.toml` (GT6). For a Drive-backed (Tier-2) repo, install the `[runner]` extra so `gdown` is present host-side (GT10).
+2. **Install the SDK into the dev venv** *(only if any script does `import plutus_verify`)* — from the GitHub release wheel, **not** PyPI, **not** the repo's `pyproject.toml` (GT6). For a Drive-backed (Tier-2) repo, install the `[runner]` extra so `gdown` is present host-side — into **the venv the `plutus` CLI runs out of**, which for a `uv tool`/pipx install is *not* the project `.venv` (`uv tool install --force "plutus-verify[runner] @ $WHL"`; check with `head -1 $(which plutus)`) (GT10).
 3. **Local gate** — always run:
    ```bash
    uv run python -c "import <pkg>; print(<pkg>.__version__)"
